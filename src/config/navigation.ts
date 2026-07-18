@@ -4,7 +4,7 @@ import {
   BarChart2, Server, Cpu, Settings, Antenna, Terminal,
   Users2, ScrollText, HelpCircle,
   ShieldCheck, Wrench, Radio, Timer, Percent, Globe, KeyRound, Eye, Scale,
-  DatabaseBackup, Database, MemoryStick, Building2, Bot, Repeat2,
+  DatabaseBackup, Database, MemoryStick, Building2, Bot, Repeat2, Smartphone,
 } from '@lucide/vue'
 
 export type NavItemConfig = {
@@ -87,6 +87,7 @@ export const navigationItems: NavItemConfig[] = [
               { id: 'config-advert',        label: 'Advert Limits',        icon: Megaphone, route: '/configuration', params: { tab: 'advert' },        activeOn: ['/configuration'] },
               { id: 'config-transport',     label: 'Regions/Keys',         icon: Globe,     route: '/configuration', params: { tab: 'transport' },     activeOn: ['/configuration'] },
               { id: 'config-api-tokens',    label: 'API Tokens',           icon: KeyRound,  route: '/configuration', params: { tab: 'api-tokens' },    activeOn: ['/configuration'] },
+              { id: 'config-mobile-devices', label: 'Mobile Devices',      icon: Smartphone, route: '/configuration', params: { tab: 'mobile-devices' }, activeOn: ['/configuration'] },
               { id: 'config-web',           label: 'Web Options',          icon: Globe,     route: '/configuration', params: { tab: 'web' },           activeOn: ['/configuration'] },
               { id: 'config-observer',      label: 'Observer',             icon: Eye,       route: '/configuration', params: { tab: 'observer' },      activeOn: ['/configuration'] },
               { id: 'config-policy-engine', label: 'Policies',             icon: Scale,     route: '/configuration', params: { tab: 'policy-engine' }, activeOn: ['/configuration'] },

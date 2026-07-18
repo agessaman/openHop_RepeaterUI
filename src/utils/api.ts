@@ -1292,6 +1292,62 @@ export class ApiService {
     }
   }
 
+  // ========================
+  // Mobile Companion API (devices + pairing)
+  // ========================
+
+  static async getCompanions(): Promise<
+    ApiResponse<
+      Array<{
+        name: string;
+        companion_hash: string;
+        node_name: string;
+        public_key: string;
+      }>
+    >
+  > {
+    return this.get('v1/companions');
+  }
+
+  static async startPairing(
+    companion_name: string,
+  ): Promise<
+    ApiResponse<{
+      code: string;
+      expires_in: number;
+      companion_name: string;
+      fingerprint: string;
+    }>
+  > {
+    return this.post('v1/pair/start', { companion_name });
+  }
+
+  static async getMobileDevices(): Promise<
+    ApiResponse<
+      Array<{
+        id: number;
+        companion_hash: string;
+        device_id: string;
+        name: string;
+        token_id: number;
+        platform: string | null;
+        push_token: string | null;
+        push_relay_url: string | null;
+        created_at: number;
+        last_seen: number | null;
+        last_synced_seq: number | null;
+      }>
+    >
+  > {
+    return this.get('v1/devices');
+  }
+
+  static async revokeMobileDevice(
+    device_id: string,
+  ): Promise<ApiResponse<{ revoked: boolean; device_id: string }>> {
+    return this.delete(`v1/devices/${encodeURIComponent(device_id)}`);
+  }
+
   /**
    * Handle API errors consistently
    */

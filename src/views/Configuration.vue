@@ -10,6 +10,7 @@ import DutyCycle from '@/components/configuration/DutyCycle.vue';
 import TransmissionDelays from '@/components/configuration/TransmissionDelays.vue';
 import TransportKeys from '@/components/configuration/TransportKeys.vue';
 import APITokens from '@/components/configuration/APITokens.vue';
+import MobileDevices from '@/components/configuration/MobileDevices.vue';
 import WebSettings from '@/components/configuration/WebSettings.vue';
 import AdvertSettings from '@/components/configuration/AdvertSettings.vue';
 import LetsMeshSettings from '@/components/configuration/LetsMeshSettings.vue';
@@ -75,7 +76,7 @@ function requestCurrentTabLeave(callback: () => void) {
 
 const VALID_TABS = new Set([
   'radio', 'radio-hardware', 'repeater', 'duty', 'delays',
-  'advert', 'transport', 'api-tokens', 'web', 'observer', 'policy-engine',
+  'advert', 'transport', 'api-tokens', 'mobile-devices', 'web', 'observer', 'policy-engine',
   'backup', 'database', 'memory',
 ]);
 
@@ -191,6 +192,7 @@ onMounted(async () => {
         <TransmissionDelays     v-if="activeTab === 'delays'"        ref="delaysRef"        key="transmission-delays" />
         <TransportKeys          v-if="activeTab === 'transport'"     ref="transportRef"     key="transport-keys" />
         <APITokens              v-if="activeTab === 'api-tokens'"                           key="api-tokens" />
+        <MobileDevices          v-if="activeTab === 'mobile-devices'"                       key="mobile-devices" />
         <WebSettings            v-if="activeTab === 'web'"                                  key="web-settings" />
         <LetsMeshSettings       v-if="activeTab === 'observer'"      ref="letsMeshRef"      key="letsmesh-settings" />
         <PolicyEngineSettings   v-if="activeTab === 'policy-engine'"                        key="policy-engine" />
