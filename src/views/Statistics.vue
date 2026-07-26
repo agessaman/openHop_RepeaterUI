@@ -2,6 +2,7 @@
 import { ref, reactive, onMounted, onBeforeUnmount, computed, nextTick, toRaw, markRaw } from 'vue';
 import { usePacketStore } from '@/stores/packets';
 import { streamingGet } from '@/utils/streamingFetch';
+import { mapNoiseFloorValue } from '@/utils/noiseFloor';
 import SparklineChart from '@/components/ui/Sparkline.vue';
 import ChartCard from '@/components/ui/ChartCard.vue';
 
@@ -60,7 +61,7 @@ interface MetricsData {
 interface NoiseFloorData {
   chart_data: Array<{
     timestamp: number;
-    noise_floor_dbm: number;
+    noise_floor_dbm: number | null;
   }>;
 }
 
@@ -88,7 +89,7 @@ interface SignalMetrics {
   timestamp: number;
   snr: number | null;
   rssi: number | null;
-  noiseFloor: number;
+  noiseFloor: number | null;
 }
 
 const packetStore = usePacketStore();
@@ -429,8 +430,8 @@ const loadNoiseFloorData = async () => {
         }
         noiseFloorData.value = {
           chart_data: display.map((item: NoiseFloorHistoryItem) => ({
-            timestamp: item.timestamp || Date.now() / 1000,
-            noise_floor_dbm: item.noise_floor_dbm || item.noise_floor || -120,
+            timestamp: item.timestamp ?? Date.now() / 1000,
+            noise_floor_dbm: mapNoiseFloorValue(item),
           })),
         };
         generateSignalMetricsHistory();
@@ -775,7 +776,7 @@ const createOrUpdateSignalMetricsChart = () => {
       x: point.timestamp,
       y: point.noiseFloor,
     }))
-    .filter((point) => point.y !== null && point.y !== undefined);
+    .filter((point): point is { x: number; y: number } => point.y !== null && point.y !== undefined);
 
   // Calculate Y-axis bounds with 5% headroom
   const noiseYValues = noiseData.map((d) => d.y);
