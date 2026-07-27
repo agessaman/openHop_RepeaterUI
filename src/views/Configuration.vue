@@ -130,10 +130,10 @@ onMounted(async () => {
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
       <div>
-        <h1 class="text-xl sm:text-2xl font-bold text-content-primary">
+        <h1 class="text-ui-title sm:text-ui-title-lg font-bold text-content-primary">
           Configuration
         </h1>
-        <p class="text-content-secondary dark:text-content-muted mt-1 sm:mt-2 text-sm sm:text-base">
+        <p class="text-content-secondary dark:text-content-muted mt-1 sm:mt-2 text-ui-label sm:text-ui-body">
           System configuration and settings
         </p>
       </div>

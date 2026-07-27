@@ -118,16 +118,16 @@ function formatOptionalAcl(value: unknown): string {
 </script>
 
 <template>
-  <div class="p-6 space-y-6">
+  <div class="p-3 sm:p-6 space-y-4 sm:space-y-6">
     <!-- Header -->
     <div>
-      <h1 class="text-2xl font-bold text-content-primary">
+      <h1 class="text-ui-title sm:text-ui-title-lg font-bold text-content-primary">
         Sessions & Access Control
       </h1>
-      <p class="text-content-secondary dark:text-content-muted mt-2">
+      <p class="text-content-secondary dark:text-content-muted mt-1 sm:mt-2 text-ui-label sm:text-ui-body">
         Manage authenticated clients and access control lists
       </p>
-      <p class="text-content-muted text-sm mt-1">
+      <p class="text-content-muted text-ui-label mt-1">
         Repeater, room servers, and companion identities; companions do not accept client logins.
       </p>
     </div>

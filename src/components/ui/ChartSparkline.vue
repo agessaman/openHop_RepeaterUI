@@ -283,14 +283,14 @@ onBeforeUnmount(() => {
   <div class="sparkline-card">
     <!-- Header: Title and Value -->
     <div class="card-header">
-      <p class="card-title">{{ title }}</p>
+      <p class="card-title text-ui-caption truncate">{{ title }}</p>
       <div class="card-values">
-        <span class="card-value" :style="{ color }">{{
+        <span class="card-value text-ui-metric lg:text-ui-metric-lg" :style="{ color }">{{
           typeof value === 'number' ? value.toLocaleString() : value
         }}</span>
         <span
           v-if="secondaryValue !== undefined"
-          class="card-secondary-value"
+          class="card-secondary-value text-ui-label"
           :style="{ color: secondaryColor }"
         >
           {{ secondaryLabel
@@ -334,17 +334,19 @@ onBeforeUnmount(() => {
 .card-header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-end;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
 .card-title {
   color: var(--color-text-muted);
-  font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   transition: color 0.3s ease;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .dark .card-title {
@@ -352,7 +354,6 @@ onBeforeUnmount(() => {
 }
 
 .card-value {
-  font-size: 22px;
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -362,10 +363,11 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: baseline;
   gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .card-secondary-value {
-  font-size: 13px;
   font-weight: 600;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -390,14 +392,6 @@ onBeforeUnmount(() => {
 
   .card-header {
     margin-bottom: 10px;
-  }
-
-  .card-title {
-    font-size: 12px;
-  }
-
-  .card-value {
-    font-size: 26px;
   }
 
   .card-chart {

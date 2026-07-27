@@ -89,11 +89,11 @@ html.is-mobile-app {
   }
 
   .cfg-btn-primary {
-    @apply px-4 py-2 bg-primary/opacity-medium hover:bg-primary/opacity-medium text-content-primary dark:text-content-primary rounded-lg border border-primary/opacity-heavy transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply px-4 py-2 bg-primary/opacity-medium hover:bg-primary/opacity-medium text-content-primary dark:text-content-primary rounded-lg border border-primary/opacity-heavy transition-colors text-ui-label disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .cfg-btn-secondary {
-    @apply px-4 py-2 bg-background-mute dark:bg-white/opacity-subtle hover:bg-stroke-subtle dark:hover:bg-white/opacity-light text-content-primary dark:text-content-primary rounded-lg border border-stroke-subtle dark:border-stroke/opacity-medium transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply px-4 py-2 bg-background-mute dark:bg-white/opacity-subtle hover:bg-stroke-subtle dark:hover:bg-white/opacity-light text-content-primary dark:text-content-primary rounded-lg border border-stroke-subtle dark:border-stroke/opacity-medium transition-colors text-ui-label disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   /* ── Logo styling for light/dark mode ────────────────────────────────── */
@@ -108,7 +108,7 @@ html.is-mobile-app {
 
   /* ── TopBar icon buttons ────────────────────────────────────────────────── */
   .topbar-icon-btn {
-    @apply w-[35px] h-[35px] rounded bg-background-mute dark:bg-surface-elevated flex items-center justify-center hover:bg-stroke-subtle dark:hover:bg-stroke/opacity-medium transition-colors;
+    @apply w-11 h-11 lg:w-[35px] lg:h-[35px] rounded bg-background-mute dark:bg-surface-elevated flex items-center justify-center hover:bg-stroke-subtle dark:hover:bg-stroke/opacity-medium transition-colors;
   }
 
   /* ── General-purpose buttons ────────────────────────────────────────────── */
@@ -116,25 +116,25 @@ html.is-mobile-app {
   /* Never use bg-primary text-white — primary is light teal in dark mode.     */
 
   .btn-primary {
-    @apply px-4 py-2 rounded-lg text-sm font-medium transition-colors
+    @apply px-4 py-2 rounded-lg text-ui-label font-medium transition-colors
            bg-primary/opacity-medium hover:bg-primary/opacity-medium border border-primary/opacity-heavy text-primary
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-danger {
-    @apply px-4 py-2 rounded-lg text-sm font-medium transition-colors
+    @apply px-4 py-2 rounded-lg text-ui-label font-medium transition-colors
            bg-accent-red/opacity-medium hover:bg-accent-red/opacity-medium border border-accent-red/opacity-heavy text-accent-red
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-success {
-    @apply px-4 py-2 rounded-lg text-sm font-medium transition-colors
+    @apply px-4 py-2 rounded-lg text-ui-label font-medium transition-colors
            bg-accent-green/opacity-medium hover:bg-accent-green/opacity-medium border border-accent-green/opacity-heavy text-accent-green
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-secondary {
-    @apply px-4 py-2 rounded-lg text-sm transition-colors
+    @apply px-4 py-2 rounded-lg text-ui-label transition-colors
            bg-background-mute dark:bg-white/opacity-subtle hover:bg-stroke-subtle dark:hover:bg-white/opacity-light
            border border-stroke-subtle dark:border-stroke/opacity-medium
            text-content-primary dark:text-content-primary
@@ -144,25 +144,25 @@ html.is-mobile-app {
   /* Compact / pill variants — for inline row actions and small controls */
 
   .btn-primary-xs {
-    @apply px-3 py-1 rounded text-xs transition-colors
+    @apply px-3 py-1 rounded text-ui-caption transition-colors
            bg-primary/opacity-medium hover:bg-primary/opacity-medium border border-primary/opacity-heavy text-primary
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-danger-xs {
-    @apply px-3 py-1 rounded text-xs transition-colors
+    @apply px-3 py-1 rounded text-ui-caption transition-colors
            bg-accent-red/opacity-medium hover:bg-accent-red/opacity-medium border border-accent-red/opacity-heavy text-accent-red
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-success-xs {
-    @apply px-3 py-1 rounded text-xs transition-colors
+    @apply px-3 py-1 rounded text-ui-caption transition-colors
            bg-accent-green/opacity-medium hover:bg-accent-green/opacity-medium border border-accent-green/opacity-heavy text-accent-green
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-secondary-xs {
-    @apply px-3 py-1.5 rounded-lg text-xs transition-colors
+    @apply px-3 py-1.5 rounded-lg text-ui-caption transition-colors
            bg-background-mute dark:bg-white/opacity-subtle hover:bg-stroke-subtle dark:hover:bg-white/opacity-light
            border border-stroke-subtle dark:border-stroke/opacity-medium
            text-content-primary
@@ -172,11 +172,11 @@ html.is-mobile-app {
   /* ── Config form inputs ─────────────────────────────────────────────────── */
 
   .cfg-input {
-    @apply w-full px-3 py-1.5 bg-background-mute dark:bg-white/opacity-subtle border border-stroke-subtle dark:border-stroke/opacity-light rounded-lg text-content-primary dark:text-content-primary text-sm focus:outline-none focus:border-primary transition-colors;
+    @apply w-full px-3 py-1.5 bg-background-mute dark:bg-white/opacity-subtle border border-stroke-subtle dark:border-stroke/opacity-light rounded-lg text-content-primary dark:text-content-primary text-ui-label focus:outline-none focus:border-primary transition-colors;
   }
 
   .cfg-select {
-    @apply w-full px-3 py-1.5 bg-background-mute dark:bg-white/opacity-subtle border border-stroke-subtle dark:border-stroke/opacity-light rounded-lg text-content-primary dark:text-content-primary text-sm focus:outline-none focus:border-primary transition-colors;
+    @apply w-full px-3 py-1.5 bg-background-mute dark:bg-white/opacity-subtle border border-stroke-subtle dark:border-stroke/opacity-light rounded-lg text-content-primary dark:text-content-primary text-ui-label focus:outline-none focus:border-primary transition-colors;
   }
 
   .dark .cfg-select,
@@ -223,7 +223,7 @@ html.is-mobile-app {
 
   /* Field label — mt-2 provides subtle breathing room within a section; gap-4 on modal-form handles section-to-section spacing */
   .modal-field-label {
-    @apply block text-xs font-medium text-content-secondary dark:text-content-muted mt-2 mb-1;
+    @apply block text-ui-caption font-medium text-content-secondary dark:text-content-muted mt-2 mb-1;
   }
 
   /* Label row — for labels that sit beside an inline action (e.g. Show/Edit toggle) */
@@ -233,7 +233,7 @@ html.is-mobile-app {
 
   /* Text / number / password / mono inputs */
   .modal-input {
-    @apply w-full px-3 py-2 text-sm rounded-md bg-background-mute dark:bg-white/opacity-subtle
+    @apply w-full px-3 py-2 text-ui-label rounded-md bg-background-mute dark:bg-white/opacity-subtle
            border border-stroke-subtle dark:border-stroke/opacity-light
            text-content-primary dark:text-content-primary
            placeholder-content-muted dark:placeholder-content-muted/opacity-heavy
@@ -242,7 +242,7 @@ html.is-mobile-app {
 
   /* <select> elements (no placeholder token needed) */
   .modal-select {
-    @apply w-full px-3 py-2 text-sm rounded-md bg-background-mute dark:bg-white/opacity-subtle
+    @apply w-full px-3 py-2 text-ui-label rounded-md bg-background-mute dark:bg-white/opacity-subtle
            border border-stroke-subtle dark:border-stroke/opacity-light
            text-content-primary dark:text-content-primary
            focus:outline-none focus:border-primary transition-colors;
@@ -261,13 +261,13 @@ html.is-mobile-app {
   /* Block-level monospace code/command display (curl examples, config snippets) */
   .code-block {
     @apply block bg-background-mute dark:bg-white/opacity-subtle px-3 py-2 rounded
-           text-xs text-content-primary dark:text-content-primary
+           text-ui-caption text-content-primary dark:text-content-primary
            font-mono overflow-x-auto;
   }
 
   /* Read-only value display fields (tokens, coordinates, derived keys) */
   .modal-input-readonly {
-    @apply w-full px-3 py-2 text-sm rounded-md bg-background-mute dark:bg-white/opacity-subtle
+    @apply w-full px-3 py-2 text-ui-label rounded-md bg-background-mute dark:bg-white/opacity-subtle
            border border-stroke-subtle dark:border-stroke/opacity-light
            text-content-primary dark:text-content-primary
            font-mono cursor-default focus:outline-none focus:ring-0 focus:border-stroke-subtle dark:focus:border-stroke/opacity-light;
@@ -304,7 +304,7 @@ html.is-mobile-app {
   /* Matches cfg-btn-primary sizing (py-2) but in the red/danger colour scheme */
   .cfg-btn-danger {
     @apply px-4 py-2 bg-accent-red/opacity-medium hover:bg-accent-red/opacity-medium text-accent-red rounded-lg
-           border border-accent-red/opacity-heavy transition-colors text-sm
+           border border-accent-red/opacity-heavy transition-colors text-ui-label
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
@@ -317,11 +317,11 @@ html.is-mobile-app {
 
   /* ── Status badge pills ──────────────────────────────────────────────────── */
   /* Small pill badges for handler/broker status, enabled state etc. */
-  .status-badge       { @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium; }
-  .status-badge-green { @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent-green/opacity-light text-accent-green; }
-  .status-badge-amber { @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent-amber/opacity-light text-accent-amber; }
-  .status-badge-red   { @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent-red/opacity-light text-accent-red; }
-  .status-badge-muted { @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-background-mute text-content-muted; }
+  .status-badge       { @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-ui-caption font-medium; }
+  .status-badge-green { @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-ui-caption font-medium bg-accent-green/opacity-light text-accent-green; }
+  .status-badge-amber { @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-ui-caption font-medium bg-accent-amber/opacity-light text-accent-amber; }
+  .status-badge-red   { @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-ui-caption font-medium bg-accent-red/opacity-light text-accent-red; }
+  .status-badge-muted { @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-ui-caption font-medium bg-background-mute text-content-muted; }
 
   /* ── Status indicator dots ──────────────────────────────────────────────── */
   /* Inline status dots — use alongside w-1.5 h-1.5 rounded-full */

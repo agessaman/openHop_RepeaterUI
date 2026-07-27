@@ -3,11 +3,11 @@ defineOptions({ name: 'HelpView' });
 </script>
 
 <template>
-  <div>
+  <div class="p-3 sm:p-6">
     <div
-      class="glass-card backdrop-blur border border-stroke-subtle dark:border-white/opacity-light rounded-[15px] p-8"
+      class="glass-card backdrop-blur border border-stroke-subtle dark:border-white/opacity-light rounded-[15px] p-4 sm:p-8"
     >
-      <h1 class="text-content-primary text-2xl font-semibold mb-6">
+      <h1 class="text-content-primary text-ui-title sm:text-ui-title-lg font-semibold mb-4 sm:mb-6">
         Help & Documentation
       </h1>
 
@@ -23,10 +23,10 @@ defineOptions({ name: 'HelpView' });
           </svg>
         </div>
 
-        <h2 class="text-content-primary text-xl font-medium mb-3">
+        <h2 class="text-content-primary text-ui-section sm:text-ui-title font-medium mb-3">
           Repeater Wiki
         </h2>
-        <p class="text-content-secondary dark:text-content-muted mb-8 max-w-md mx-auto">
+        <p class="text-content-secondary dark:text-content-muted text-ui-label sm:text-ui-body mb-8 max-w-md mx-auto">
           Access documentation, setup guides, troubleshooting tips, and community resources on our
           official wiki.
         </p>

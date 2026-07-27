@@ -80,6 +80,16 @@ export default {
         sans: ['Inter', '-apple-system', 'Roboto', 'Helvetica', 'sans-serif'],
         heading: ['Michroma', 'sans-serif'],
       },
+      fontSize: {
+        'ui-caption': ['0.75rem', { lineHeight: '1.35' }],
+        'ui-label': ['0.875rem', { lineHeight: '1.4' }],
+        'ui-body': ['1rem', { lineHeight: '1.5' }],
+        'ui-section': ['1.125rem', { lineHeight: '1.35' }],
+        'ui-title': ['1.25rem', { lineHeight: '1.3' }],
+        'ui-title-lg': ['1.5rem', { lineHeight: '1.25' }],
+        'ui-metric': ['1.375rem', { lineHeight: '1.2' }],
+        'ui-metric-lg': ['1.625rem', { lineHeight: '1.2' }],
+      },
       opacity: {
         'opacity-subtle': '0.05',
         'opacity-light':  '0.10',
