@@ -65,7 +65,7 @@ onMounted(() => {
 
 <template>
   <div
-    class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 lg:gap-4 mb-5 stats-cards-container"
+    class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7 gap-2 sm:gap-3 xl:gap-4 mb-5 stats-cards-container"
   >
     <!-- Up Time -->
     <ChartSparkline
@@ -143,11 +143,6 @@ onMounted(() => {
 .stat-card {
   /* Smooth transitions for value changes */
   transition: opacity 0.3s ease-out;
-}
-
-/* Prevent flash of content */
-.stat-card :deep(.text-lg),
-.stat-card :deep(.text-\[30px\]) {
-  transition: color 0.2s ease-out;
+  min-width: 0;
 }
 </style>

@@ -237,7 +237,7 @@ const toggleMobileSidebar = () => {
         </button>
         <div class="hidden sm:block">
           <h1
-            class="text-content-primary text-2xl lg:text-[35px] font-bold mb-1 sm:mb-2"
+            class="text-content-primary text-ui-title sm:text-ui-title-lg font-bold mb-1 sm:mb-2"
           >
             Hi {{ username }}👋
           </h1>
@@ -248,12 +248,12 @@ const toggleMobileSidebar = () => {
         <div class="text-right min-w-[120px] sm:min-w-[180px]">
           <div v-if="loading" class="flex items-center gap-2 justify-end">
             <Spinner size="xs" />
-            <p class="text-content-secondary dark:text-content-muted text-xs sm:text-sm">
+            <p class="text-content-secondary dark:text-content-muted text-ui-caption sm:text-ui-label">
               Loading...
             </p>
           </div>
           <div v-else-if="totalTrackedNodes > 0" class="space-y-1">
-            <p class="text-content-secondary dark:text-content-muted text-xs sm:text-sm">
+            <p class="text-content-secondary dark:text-content-muted text-ui-caption sm:text-ui-label">
               Tracking:
               <span class="text-primary font-medium"
                 >{{ totalTrackedNodes }} node{{ totalTrackedNodes === 1 ? '' : 's' }}</span
@@ -261,7 +261,7 @@ const toggleMobileSidebar = () => {
             </p>
             <div
               v-if="trackedBreakdown.length > 0"
-              class="text-xs text-content-muted/opacity-heavy min-h-4"
+              class="text-ui-caption text-content-muted/opacity-heavy min-h-4"
             >
               <span v-for="(item, index) in trackedBreakdown" :key="item.type" class="inline">
                 {{ item.count }} {{ item.type }}{{ item.count === 1 ? '' : 's'
@@ -273,12 +273,12 @@ const toggleMobileSidebar = () => {
             </div> -->
           </div>
           <div v-else>
-            <p class="text-content-secondary dark:text-content-muted text-xs sm:text-sm">
+            <p class="text-content-secondary dark:text-content-muted text-ui-caption sm:text-ui-label">
               Tracking: <span class="text-content-muted">0 nodes</span>
             </p>
             <div
               v-if="lastUpdateTime"
-              class="text-xs text-content-muted/opacity-heavy hidden sm:block min-h-4"
+              class="text-ui-caption text-content-muted/opacity-heavy hidden sm:block min-h-4"
             >
               Last checked {{ lastUpdateTime.toLocaleTimeString() }}
             </div>

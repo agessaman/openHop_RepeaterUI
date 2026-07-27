@@ -93,8 +93,8 @@ useManagedPolling(
     <div class="glass-card rounded-[15px] p-4 sm:p-6">
       <div class="flex items-start justify-between gap-4">
         <div>
-          <h1 class="text-xl sm:text-2xl font-semibold text-content-heading">Sensors</h1>
-          <p class="mt-1 text-sm text-content-muted">
+          <h1 class="text-ui-title sm:text-ui-title-lg font-semibold text-content-heading">Sensors</h1>
+          <p class="mt-1 text-ui-label sm:text-ui-body text-content-muted">
             Live sensor summary from the existing stats API.
           </p>
         </div>

@@ -454,10 +454,10 @@ async function removeClient(publicKey: string, identityHash?: string) {
 </script>
 
 <template>
-  <div class="p-6 space-y-6">
+  <div class="p-3 sm:p-6 space-y-4 sm:space-y-6">
     <!-- Header with Gradient -->
     <div
-      class="relative overflow-hidden rounded-[20px] p-6 mb-6 glass-card backdrop-blur-xl border border-stroke-subtle dark:border-white/opacity-light"
+      class="relative overflow-hidden rounded-[20px] p-4 sm:p-6 mb-4 sm:mb-6 glass-card backdrop-blur-xl border border-stroke-subtle dark:border-white/opacity-light"
     >
       <!-- Animated Gradient Background -->
       <div
@@ -490,10 +490,10 @@ async function removeClient(publicKey: string, identityHash?: string) {
           </div>
 
           <div>
-            <h1 class="text-3xl font-bold text-content-primary mb-1">
+            <h1 class="text-ui-title sm:text-ui-title-lg font-bold text-content-primary mb-1">
               Room Servers
             </h1>
-            <p class="text-content-secondary dark:text-content-muted text-sm">
+            <p class="text-content-secondary dark:text-content-muted text-ui-label sm:text-ui-body">
               Manage room server identities and messages
             </p>
           </div>
