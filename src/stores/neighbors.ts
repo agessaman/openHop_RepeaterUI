@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import ApiService from '@/utils/api';
+import type { NeighborScopeRecord } from '@/generated/openapi';
 
 export interface Advert {
   id: number;
@@ -29,8 +30,14 @@ export const CONTACT_TYPE_MAP = {
   4: 'Hybrid Node',
 } as const;
 
+export type { NeighborScopeRecord };
+
 export const useNeighborStore = defineStore('neighbors', () => {
   const advertsByType = ref<Record<string, Advert[]>>({});
+  // Last known region scopes, keyed by lowercase pubkey hex. Only repeaters that
+  // have been queried appear here; an absent key means "never asked", which the
+  // table renders differently from a query that came back empty.
+  const scopesByPubkey = ref<Record<string, NeighborScopeRecord>>({});
   const isLoading = ref(false);
   const lastFetched = ref<number | null>(null);
   const currentHours = ref(48);
@@ -99,10 +106,33 @@ export const useNeighborStore = defineStore('neighbors', () => {
     advertsByType.value = next;
     lastFetched.value = Date.now();
     isLoading.value = false;
+
+    // Fetched alongside the adverts but never allowed to fail them: a repeater
+    // that predates the scopes endpoint (or has never run a query) just leaves
+    // the column empty.
+    await fetchScopes();
+  }
+
+  async function fetchScopes(): Promise<void> {
+    try {
+      const response = await ApiService.getNeighborScopes();
+      scopesByPubkey.value =
+        response.success && response.data
+          ? (response.data as Record<string, NeighborScopeRecord>)
+          : {};
+    } catch {
+      scopesByPubkey.value = {};
+    }
+  }
+
+  /** Merge one query's outcome in without re-reading the whole table. */
+  function setScope(pubkey: string, record: NeighborScopeRecord): void {
+    scopesByPubkey.value = { ...scopesByPubkey.value, [pubkey.toLowerCase()]: record };
   }
 
   function reset(): void {
     advertsByType.value = {};
+    scopesByPubkey.value = {};
     isLoading.value = false;
     lastFetched.value = null;
     currentHours.value = 48;
@@ -110,6 +140,7 @@ export const useNeighborStore = defineStore('neighbors', () => {
 
   return {
     advertsByType,
+    scopesByPubkey,
     isLoading,
     lastFetched,
     currentHours,
@@ -117,6 +148,8 @@ export const useNeighborStore = defineStore('neighbors', () => {
     totalCount,
     isStale,
     fetchAll,
+    fetchScopes,
+    setScope,
     reset,
   };
 });

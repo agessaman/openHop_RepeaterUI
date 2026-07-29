@@ -58,6 +58,14 @@ type TransportKeysResponse = EndpointApiResponse<
 type SendAdvertResponse = EndpointApiResponse<
   (typeof generatedApiClient)['sendAdvert']['sendAdvertCreate']
 >;
+type NeighborScopesResponse = EndpointApiResponse<
+  (typeof generatedApiClient)['neighborScopes']['neighborScopesList']
+>;
+type QueryNeighborScopesResponse = EndpointApiResponse<
+  (typeof generatedApiClient)['queryNeighborScopes']['queryNeighborScopesCreate']
+>;
+/** Outcome of a single scope query, as stored and returned by the repeater. */
+export type NeighborScopeQueryResult = NonNullable<QueryNeighborScopesResponse['data']>;
 type CreateTransportKeyResponse = EndpointApiResponse<
   (typeof generatedApiClient)['transportKeys']['transportKeysCreate']
 >;
@@ -929,6 +937,33 @@ export class ApiService {
         params,
       );
       return response.data as ApiResponse<Record<string, unknown>>;
+    } catch (error: unknown) {
+      throw this.handleError(error);
+    }
+  }
+
+  /** Last known region scopes per neighbour, keyed by lowercase pubkey hex.
+   *  Neighbours that have never been queried are absent from the map. */
+  static async getNeighborScopes(): Promise<NeighborScopesResponse> {
+    try {
+      const params = await this.getGeneratedRequestParams();
+      const response = await generatedApiClient.neighborScopes.neighborScopesList(params);
+      return response.data as NeighborScopesResponse;
+    } catch (error: unknown) {
+      throw this.handleError(error);
+    }
+  }
+
+  /** Ask one neighbour for its scopes now. The repeater holds the request open for
+   *  the reply (normally a few seconds), so callers should show progress. */
+  static async queryNeighborScopes(pubkey: string): Promise<QueryNeighborScopesResponse> {
+    try {
+      const params = await this.getGeneratedRequestParams();
+      const response = await generatedApiClient.queryNeighborScopes.queryNeighborScopesCreate(
+        { pubkey },
+        params,
+      );
+      return response.data as QueryNeighborScopesResponse;
     } catch (error: unknown) {
       throw this.handleError(error);
     }
