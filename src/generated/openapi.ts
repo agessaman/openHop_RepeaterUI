@@ -3887,7 +3887,7 @@ export class Api<
   };
   neighborScopes = {
     /**
-     * @description Region scopes learned from the anon-regions query the neighbours publisher issues, keyed by lowercase pubkey hex. One row per neighbour that has been queried; neighbours never queried are simply absent. `scopes` is the last answer given and an empty string is a real answer meaning the neighbour serves unscoped traffic only. `status`/`queried_at` describe the most recent query, which may have failed after a good answer, so `responded_at` is what says how fresh `scopes` is.
+     * @description Region scopes learned from the anon-regions query the neighbours publisher issues, keyed by lowercase pubkey hex. One row per neighbour that has been queried; neighbours never queried are simply absent. `scopes` is the last answer given and an empty string is a real answer meaning the neighbour serves unscoped traffic only. `status`/`queried_at` describe the most recent query, which may have failed after a good answer, so `responded_at` is what says how fresh `scopes` is. `served` carries this node's own scopes in the same comma-separated form — the very string it sends when a neighbour asks it the same question — so a client can tell which of a neighbour's scopes it already shares.
      *
      * @tags Network Policy
      * @name NeighborScopesList
@@ -3901,6 +3901,10 @@ export class Api<
           success: boolean;
           error?: string;
           count?: number;
+          served?: {
+            /** This node's own advertised scopes, comma-separated, `*` first when it floods unscoped. Empty when they cannot be read. */
+            scopes: string;
+          };
           data?: Record<string, NeighborScopeRecord>;
         },
         any

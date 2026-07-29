@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { Tag } from '@lucide/vue';
 import Spinner from '@/components/ui/Spinner.vue';
 import { formatPubkey, formatTimestamp, formatTimeAgo } from '@/utils/formatters';
-import { describeScopes } from '@/utils/neighborScopes';
+import { describeScopes, UNSCOPED_WILDCARD } from '@/utils/neighborScopes';
 import type { NeighborScopeRecord } from '@/generated/openapi';
 
 defineOptions({ name: 'NeighborScopesModal' });
@@ -19,12 +19,18 @@ interface Props {
   neighbor: Neighbor | null;
   /** Stored record for this neighbour, or null when it has never been queried. */
   record?: NeighborScopeRecord | null;
+  /** This repeater's own advertised scopes, for the shared/not-shared split. */
+  servedScopes?: string[];
+  /** Scope name currently being added, so only its own button shows progress. */
+  addingScope?: string | null;
   loading?: boolean;
   error?: string | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   record: null,
+  servedScopes: () => [],
+  addingScope: null,
   loading: false,
   error: null,
 });
@@ -32,9 +38,27 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   close: [];
   query: [neighbor: Neighbor];
+  'add-scope': [scope: string];
 }>();
 
 const display = computed(() => describeScopes(props.record));
+
+const servesScope = (name: string) =>
+  props.servedScopes.some((served) => served.toLowerCase() === name.trim().toLowerCase());
+
+const scopeBadges = computed(() =>
+  display.value.names.map((name) => {
+    const shared = servesScope(name);
+    return {
+      name,
+      shared,
+      // The wildcard is not a region and has no transport key -- it is this node's
+      // own unscoped-flood switch -- so it is never offered as something to add.
+      canAdd: !shared && name !== UNSCOPED_WILDCARD,
+      busy: props.addingScope === name,
+    };
+  }),
+);
 
 const respondedAt = computed(() => {
   const at = props.record?.responded_at;
@@ -58,6 +82,11 @@ const close = () => emit('close');
 const runQuery = () => {
   if (props.loading || !props.neighbor) return;
   emit('query', props.neighbor);
+};
+
+const addScope = (name: string) => {
+  if (props.addingScope) return;
+  emit('add-scope', name);
 };
 </script>
 
@@ -107,15 +136,60 @@ const runQuery = () => {
                 Scopes served
               </div>
 
-              <div v-if="display.state === 'scoped'" class="flex flex-wrap gap-2">
-                <span
-                  v-for="name in display.names"
-                  :key="name"
-                  class="inline-block px-2 py-1 rounded-full text-xs border bg-primary/opacity-medium border-primary/opacity-heavy text-primary"
-                >
-                  {{ name }}
-                </span>
-              </div>
+              <template v-if="display.state === 'scoped'">
+                <div class="flex flex-wrap gap-2">
+                  <span
+                    v-for="badge in scopeBadges"
+                    :key="badge.name"
+                    :class="[
+                      'inline-flex items-center gap-1 pl-2 rounded-full text-xs border',
+                      badge.canAdd ? 'pr-1' : 'pr-2',
+                      badge.shared
+                        ? 'bg-accent-green/opacity-medium border-accent-green/opacity-heavy text-accent-green'
+                        : 'bg-primary/opacity-medium border-primary/opacity-heavy text-primary',
+                    ]"
+                    :title="
+                      badge.shared
+                        ? `This repeater also serves ${badge.name}`
+                        : badge.canAdd
+                          ? `Add ${badge.name} to this repeater`
+                          : `This repeater does not flood unscoped traffic`
+                    "
+                  >
+                    <span class="py-1">{{ badge.name }}</span>
+                    <button
+                      v-if="badge.canAdd"
+                      type="button"
+                      class="flex items-center justify-center w-5 h-5 rounded-full text-accent-green hover:bg-accent-green/opacity-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      :disabled="addingScope !== null"
+                      :aria-label="`Add ${badge.name} to this repeater`"
+                      @click="addScope(badge.name)"
+                    >
+                      <Spinner v-if="badge.busy" size="xs" color="current" />
+                      <svg
+                        v-else
+                        class="w-3.5 h-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="3"
+                          d="M12 5v14M5 12h14"
+                        />
+                      </svg>
+                    </button>
+                  </span>
+                </div>
+                <p class="text-content-muted text-xs mt-2">
+                  <span class="text-accent-green">Green</span> is a scope this repeater also
+                  serves; press
+                  <span class="text-accent-green font-medium">+</span> to start serving one it
+                  does not.
+                </p>
+              </template>
 
               <div v-else-if="display.state === 'unscoped'" class="flex items-center gap-2">
                 <span

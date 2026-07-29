@@ -323,3 +323,84 @@ describe('NeighborMenu icon alignment', () => {
     expect(Number(constant)).toBe(Number(utility) * 4);
   });
 });
+
+describe('NeighborScopesModal scope badges', () => {
+  beforeEach(() => setActivePinia(createPinia()));
+
+  const mountModal = async (props: Record<string, unknown>) => {
+    const { default: NeighborScopesModal } = await import(
+      '@/components/modals/NeighborScopesModal.vue'
+    );
+    return mount(NeighborScopesModal, {
+      props: {
+        show: true,
+        neighbor: { pubkey: 'aa'.repeat(32), node_name: 'peer', zero_hop: true },
+        ...props,
+      },
+      attachTo: document.body,
+    });
+  };
+
+  const badges = () => [...document.querySelectorAll('.modal-backdrop span.rounded-full')];
+
+  it('greens a scope we also serve and leaves it with no add button', async () => {
+    const wrapper = await mountModal({
+      record: record({ scopes: 'DEN,BOU' }),
+      servedScopes: ['*', 'DEN'],
+    });
+
+    const den = badges().find((b) => b.textContent?.includes('DEN'))!;
+    const bou = badges().find((b) => b.textContent?.includes('BOU'))!;
+
+    expect(den.getAttribute('class')).toContain('text-accent-green');
+    expect(den.querySelector('button')).toBeNull();
+    // Not shared: blue, with a + to start serving it.
+    expect(bou.getAttribute('class')).toContain('text-primary');
+    expect(bou.querySelector('button')).not.toBeNull();
+    wrapper.unmount();
+  });
+
+  it('emits the scope name when + is pressed', async () => {
+    const wrapper = await mountModal({
+      record: record({ scopes: 'BOU' }),
+      servedScopes: ['*'],
+    });
+
+    const button = badges()
+      .find((b) => b.textContent?.includes('BOU'))!
+      .querySelector('button')!;
+    button.dispatchEvent(new Event('click'));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.emitted('add-scope')).toEqual([['BOU']]);
+    wrapper.unmount();
+  });
+
+  it('never offers to add the wildcard, which is not a region', async () => {
+    // `*` is this node's own unscoped-flood switch and has no transport key, so a
+    // + on it would post a region named "*".
+    const wrapper = await mountModal({
+      record: record({ scopes: 'DEN,*' }),
+      servedScopes: [],
+    });
+
+    const wildcard = badges().find((b) => b.textContent?.trim().startsWith('*'))!;
+    expect(wildcard.querySelector('button')).toBeNull();
+    wrapper.unmount();
+  });
+
+  it('disables every + while one add is in flight', async () => {
+    const wrapper = await mountModal({
+      record: record({ scopes: 'DEN,BOU' }),
+      servedScopes: [],
+      addingScope: 'DEN',
+    });
+
+    const buttons = [...document.querySelectorAll('.modal-backdrop span.rounded-full button')];
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) {
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+    }
+    wrapper.unmount();
+  });
+});

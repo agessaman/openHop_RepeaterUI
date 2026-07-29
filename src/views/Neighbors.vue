@@ -586,6 +586,42 @@ const handleMenuQueryScopes = async (neighbor: unknown) => {
   await runScopeQuery(neighbor as Advert);
 };
 
+// Which scope's + button is mid-flight, so only that badge shows a spinner.
+const addingScope = ref<string | null>(null);
+
+const addScopeToRepeater = async (scope: string) => {
+  if (addingScope.value !== null) return;
+  addingScope.value = scope;
+  const pubkey = selectedScopesPubkey.value;
+  if (pubkey) setScopesQueryError(pubkey, null);
+
+  try {
+    // Regions are stored '#'-prefixed, matching the transport-key editor. The key
+    // itself is derived from the name (and the repeater canonicalises the '#'
+    // before hashing), so a name is all that is needed to serve the region.
+    // flood_policy 'allow' is what makes it a scope we advertise -- a deny-flood
+    // key is held but never announced.
+    const response = await ApiService.createTransportKey(`#${scope}`, 'allow');
+    if (response.success === false) {
+      if (pubkey) setScopesQueryError(pubkey, response.error || `Could not add ${scope}`);
+      return;
+    }
+    // Re-read rather than assume: this is the repeater's own served list, and it
+    // decides what counts as advertised.
+    await neighborStore.fetchScopes();
+  } catch (error) {
+    console.error('Error adding scope:', error);
+    if (pubkey) {
+      setScopesQueryError(
+        pubkey,
+        error instanceof Error ? error.message : `Could not add ${scope}`,
+      );
+    }
+  } finally {
+    addingScope.value = null;
+  }
+};
+
 const closeDeleteModal = () => {
   showDeleteModal.value = false;
   selectedNeighborForDeletion.value = null;
@@ -1047,10 +1083,13 @@ onUnmounted(() => {
       :show="showScopesModal"
       :neighbor="selectedNeighborForScopes"
       :record="scopeRecordForModal"
+      :served-scopes="neighborStore.servedScopes"
+      :adding-scope="addingScope"
       :loading="scopesQueryLoading"
       :error="scopesQueryError"
       @close="closeScopesModal"
       @query="runScopeQuery"
+      @add-scope="addScopeToRepeater"
     />
   </div>
 </template>

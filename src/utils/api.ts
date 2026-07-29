@@ -58,7 +58,10 @@ type TransportKeysResponse = EndpointApiResponse<
 type SendAdvertResponse = EndpointApiResponse<
   (typeof generatedApiClient)['sendAdvert']['sendAdvertCreate']
 >;
-type NeighborScopesResponse = EndpointApiResponse<
+// The whole response body, not EndpointApiResponse: this endpoint carries `served`
+// (this node's own scopes) alongside `data`, and unwrapping to the data payload
+// would drop it.
+type NeighborScopesResponse = GeneratedEndpointData<
   (typeof generatedApiClient)['neighborScopes']['neighborScopesList']
 >;
 type QueryNeighborScopesResponse = EndpointApiResponse<
