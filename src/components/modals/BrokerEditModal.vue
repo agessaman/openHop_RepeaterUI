@@ -21,6 +21,7 @@ interface Broker {
   transport: string;
   base_topic?: string;
   retain_status: boolean;
+  neighbors: boolean;
   tls: { enabled?: boolean; insecure?: boolean };
 }
 
@@ -45,7 +46,7 @@ function cloneBroker(b: Broker): Broker {
 const draft = ref<Broker>({
   _id: 0, enabled: true, name: '', host: '', port: 443, format: 'letsmesh',
   use_jwt_auth: false, transport: 'websockets', disallowedInput: [],
-  retain_status: false, tls: { enabled: true, insecure: false },
+  retain_status: false, neighbors: false, tls: { enabled: true, insecure: false },
 });
 
 watch(
@@ -318,6 +319,28 @@ function handleCancel() {
                   </button>
                   <span class="text-sm font-medium text-content-primary">Insecure</span>
                 </div>
+              </div>
+            </div>
+
+            <!-- Publish Neighbours — per-broker opt-in for the "neighbors" topic.
+                 Off by default on purpose: the topic is not part of every
+                 MC2MQTT deployment's contract and a broker that rejects an
+                 unexpected topic drops the connection. -->
+            <div class="flex items-start gap-3">
+              <button
+                type="button"
+                @click="draft.neighbors = !draft.neighbors"
+                :class="['relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none mt-0.5', draft.neighbors ? 'bg-primary' : 'bg-background-mute dark:bg-white/opacity-subtle']"
+              >
+                <span :class="['pointer-events-none absolute top-0.5 left-0.5 inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ease-in-out', draft.neighbors ? 'translate-x-4' : 'translate-x-0']" />
+              </button>
+              <div>
+                <span class="text-sm font-medium text-content-primary">Publish Neighbours</span>
+                <span class="text-xs text-content-muted/opacity-heavy ml-1">(&quot;neighbors&quot; topic)</span>
+                <p class="text-xs text-content-secondary dark:text-content-muted mt-0.5">
+                  Periodically publishes this node's zero-hop neighbour table and their region scopes.
+                  Only enable for brokers that expect the topic — some reject unknown topics and close the connection.
+                </p>
               </div>
             </div>
 
