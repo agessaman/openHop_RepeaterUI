@@ -10,6 +10,7 @@ import DiscoveryModal from '@/components/modals/DiscoveryModal.vue';
 import Spinner from '@/components/ui/Spinner.vue';
 import PingResultModal from '@/components/modals/PingResultModal.vue';
 import NeighborDetailsModal from '@/components/modals/NeighborDetailsModal.vue';
+import NeighborScopesModal from '@/components/modals/NeighborScopesModal.vue';
 import NetworkMap from '@/components/neighbors/NetworkMap.vue';
 import NeighborTable from '@/components/neighbors/NeighborTable.vue';
 import { getPreference, setPreference } from '@/utils/preferences';
@@ -134,6 +135,36 @@ const selectedNeighborForDeletion = ref<Advert | null>(null);
 // Neighbor details modal state
 const showDetailsModal = ref(false);
 const selectedNeighborForDetails = ref<Advert | null>(null);
+
+// Region scopes panel. Only offered for repeaters: core answers the anon-regions
+// sub-type from repeater identities and routes it to the login handler for a room
+// server, so nothing else would ever reply.
+const REPEATER_CONTACT_TYPE_KEY = '2';
+const showScopesModal = ref(false);
+const selectedNeighborForScopes = ref<Advert | null>(null);
+// Keyed by pubkey rather than a bare boolean: a query runs for seconds and the
+// operator can switch the panel to another repeater meanwhile, which must not
+// inherit the first one's spinner or its error.
+const scopesQueryPubkey = ref<string | null>(null);
+const scopesQueryErrors = ref<Record<string, string>>({});
+
+const selectedScopesPubkey = computed(
+  () => selectedNeighborForScopes.value?.pubkey?.toLowerCase() ?? null,
+);
+
+const scopeRecordForModal = computed(() =>
+  selectedScopesPubkey.value
+    ? neighborStore.scopesByPubkey[selectedScopesPubkey.value] ?? null
+    : null,
+);
+
+const scopesQueryLoading = computed(
+  () => scopesQueryPubkey.value !== null && scopesQueryPubkey.value === selectedScopesPubkey.value,
+);
+
+const scopesQueryError = computed(() =>
+  selectedScopesPubkey.value ? scopesQueryErrors.value[selectedScopesPubkey.value] ?? null : null,
+);
 
 // Convert Advert to Neighbor interface for modal
 const neighborForModal = computed(() => {
@@ -472,6 +503,125 @@ const closeDetailsModal = () => {
   selectedNeighborForDetails.value = null;
 };
 
+const setScopesQueryError = (pubkey: string, message: string | null) => {
+  const next = { ...scopesQueryErrors.value };
+  if (message === null) {
+    delete next[pubkey];
+  } else {
+    next[pubkey] = message;
+  }
+  scopesQueryErrors.value = next;
+};
+
+const openScopesModal = (neighbor: unknown) => {
+  selectedNeighborForScopes.value = neighbor as Advert;
+  showScopesModal.value = true;
+};
+
+const closeScopesModal = () => {
+  showScopesModal.value = false;
+  selectedNeighborForScopes.value = null;
+};
+
+const runScopeQuery = async (neighbor: { pubkey: string }) => {
+  // The repeater serves one scope query at a time, so a second concurrent request
+  // would only be refused.
+  if (scopesQueryPubkey.value !== null) return;
+
+  const pubkey = neighbor.pubkey.toLowerCase();
+  scopesQueryPubkey.value = pubkey;
+  setScopesQueryError(pubkey, null);
+
+  try {
+    const response = await ApiService.queryNeighborScopes(neighbor.pubkey);
+    const result = response.data;
+
+    if (!response.success || !result) {
+      setScopesQueryError(pubkey, response.error || 'Scope query failed');
+      // The repeater may still have stored an answer that outran the HTTP wait.
+      await neighborStore.fetchScopes();
+      return;
+    }
+
+    if (result.queried_at == null) {
+      // Nothing was recorded because the sweep never got to this neighbour, so
+      // there is no row to merge — say that rather than invent a "no reply".
+      setScopesQueryError(pubkey, 'The query did not run — the repeater did not reach it.');
+      return;
+    }
+
+    // Written from the repeater's stored view, which keeps the last good answer
+    // when this query failed; taking the raw result would discard it.
+    neighborStore.setScope(result.pubkey, {
+      scopes: result.scopes,
+      status: result.status,
+      queried_at: result.queried_at,
+      responded_at: result.responded_at ?? null,
+    });
+
+    if (result.status === 'timeout') {
+      setScopesQueryError(
+        pubkey,
+        'No reply. The repeater must be in direct radio range, and it limits ' +
+          'anonymous replies to 4 every 3 minutes.',
+      );
+    } else if (result.status === 'send_failed') {
+      setScopesQueryError(
+        pubkey,
+        'The request could not be transmitted — the duty-cycle budget may be exhausted.',
+      );
+    }
+  } catch (error) {
+    console.error('Error querying neighbor scopes:', error);
+    setScopesQueryError(pubkey, error instanceof Error ? error.message : 'Scope query failed');
+  } finally {
+    scopesQueryPubkey.value = null;
+  }
+};
+
+// The three-dot entry point opens the panel and queries straight away, matching
+// Ping; the column's icon opens it showing what is already stored.
+const handleMenuQueryScopes = async (neighbor: unknown) => {
+  openScopesModal(neighbor);
+  await runScopeQuery(neighbor as Advert);
+};
+
+// Which scope's + button is mid-flight, so only that badge shows a spinner.
+const addingScope = ref<string | null>(null);
+
+const addScopeToRepeater = async (scope: string) => {
+  if (addingScope.value !== null) return;
+  addingScope.value = scope;
+  const pubkey = selectedScopesPubkey.value;
+  if (pubkey) setScopesQueryError(pubkey, null);
+
+  try {
+    // Regions are stored '#'-prefixed, matching the transport-key editor. The key
+    // itself is derived from the name (and the repeater canonicalises the '#'
+    // before hashing), so a name is all that is needed to serve the region.
+    // flood_policy 'allow' is what makes it a scope we advertise -- a deny-flood
+    // key is held but never announced.
+    const response = await ApiService.createTransportKey(`#${scope}`, 'allow');
+    if (response.success === false) {
+      if (pubkey) setScopesQueryError(pubkey, response.error || `Could not add ${scope}`);
+      return;
+    }
+    // Re-read rather than assume: this is the repeater's own served list, and it
+    // decides what counts as advertised.
+    await neighborStore.fetchScopes();
+  } catch (error) {
+    console.error('Error adding scope:', error);
+    if (pubkey) {
+      setScopesQueryError(
+        pubkey,
+        error instanceof Error ? error.message : `Could not add ${scope}`,
+      );
+    }
+  } finally {
+    addingScope.value = null;
+  }
+};
+
 const closeDeleteModal = () => {
   showDeleteModal.value = false;
   selectedNeighborForDeletion.value = null;
@@ -808,11 +958,15 @@ onUnmounted(() => {
           :is-compact-view="isCompactView"
           :is-first-table="false"
           :show-view-toggle="false"
+          :scopes="neighborStore.scopesByPubkey"
+          :show-scopes="typeKey === REPEATER_CONTACT_TYPE_KEY"
           @highlight-node="handleHighlightNode"
           @unhighlight-node="handleUnhighlightNode"
           @menu-ping="handleMenuPing"
           @menu-delete="handleMenuDelete"
           @show-details="handleShowDetails"
+          @show-scopes="openScopesModal"
+          @query-scopes="handleMenuQueryScopes"
         />
       </div>
 
@@ -922,6 +1076,20 @@ onUnmounted(() => {
       :base-latitude="baseLatitude"
       :base-longitude="baseLongitude"
       @close="closeDetailsModal"
+    />
+
+    <!-- Region Scopes Modal -->
+    <NeighborScopesModal
+      :show="showScopesModal"
+      :neighbor="selectedNeighborForScopes"
+      :record="scopeRecordForModal"
+      :served-scopes="neighborStore.servedScopes"
+      :adding-scope="addingScope"
+      :loading="scopesQueryLoading"
+      :error="scopesQueryError"
+      @close="closeScopesModal"
+      @query="runScopeQuery"
+      @add-scope="addScopeToRepeater"
     />
   </div>
 </template>

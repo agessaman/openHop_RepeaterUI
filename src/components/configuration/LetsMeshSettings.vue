@@ -47,6 +47,7 @@ interface CustomBroker {
   transport: string;
   base_topic?: string;
   retain_status: boolean;
+  neighbors: boolean;
   tls: { enabled?: boolean; insecure?: boolean };
 }
 
@@ -65,9 +66,21 @@ interface Snapshot {
   interval: number;
   owner: string;
   email: string;
+  neighborsEnabled: boolean;
+  neighborsInterval: number;
   brokers: CustomBroker[];
 }
 const globalSnapshot = ref<Snapshot | null>(null);
+
+// Schedule summary for the neighbours topic, from the repeater's publisher.
+// Absent (null/undefined) on repeaters that predate the feature.
+interface NeighborsStatus {
+  phase: 'disabled' | 'scheduled' | 'active' | 'due';
+  secs_until_next: number | null;
+  last_result: string | null;
+  last_publish_at: number | null;
+  interval_hours: number;
+}
 
 interface MqttStatus {
   handler_active: boolean;
@@ -77,7 +90,9 @@ interface MqttStatus {
     host: string;
     status: { connected: boolean; reconnecting: boolean };
     format: string;
+    neighbors?: boolean;
   }[];
+  neighbors?: NeighborsStatus | null;
 }
 
 // ── Observer settings ─────────────────────────────────────────────────────
@@ -87,6 +102,25 @@ const statusIntervalInput = ref(300);
 const ownerInput = ref('');
 const emailInput = ref('');
 
+// ── Neighbours publication ────────────────────────────────────────────────
+// Master switch plus schedule for the `neighbors` topic. The repeater defaults
+// `enabled` to true and treats the per-broker flags as the real control, so the
+// same default is used here for a config block that has never been written.
+const NEIGHBORS_MIN_INTERVAL_HOURS = 12;
+const NEIGHBORS_MAX_INTERVAL_HOURS = 336;
+const NEIGHBORS_DEFAULT_INTERVAL_HOURS = 24;
+const neighborsEnabledInput = ref(true);
+const neighborsIntervalInput = ref(NEIGHBORS_DEFAULT_INTERVAL_HOURS);
+
+const neighborsIntervalError = computed(() => {
+  const v = neighborsIntervalInput.value;
+  if (!Number.isFinite(v) || !Number.isInteger(v)) return 'Interval must be a whole number of hours.';
+  if (v < NEIGHBORS_MIN_INTERVAL_HOURS || v > NEIGHBORS_MAX_INTERVAL_HOURS) {
+    return `Interval must be between ${NEIGHBORS_MIN_INTERVAL_HOURS} and ${NEIGHBORS_MAX_INTERVAL_HOURS} hours.`;
+  }
+  return '';
+});
+
 // ── Broker state ──────────────────────────────────────────────────────────
 const customBrokers = ref<CustomBroker[]>([]);
 const editingBrokerId = ref<number | null>(null);
@@ -95,21 +129,12 @@ const originalBrokerDraft = ref<CustomBroker | null>(null);
 const brokerDraft = ref<CustomBroker>({
   _id: 0, enabled: true, name: '', host: '', port: 443, format: 'letsmesh',
   use_jwt_auth: false, transport: 'websockets', disallowedInput: [],
-  retain_status: false, tls: { enabled: true, insecure: false },
+  retain_status: false, neighbors: false, tls: { enabled: true, insecure: false },
 });
 const showTemplateMenu = ref(false);
 
 // ── Live status ───────────────────────────────────────────────────────────
-const status = ref<{
-  handler_active: boolean;
-  brokers: {
-    enabled: boolean;
-    name: string;
-    host: string;
-    status: { connected: boolean; reconnecting: boolean };
-    format: string;
-  }[];
-} | null>(null);
+const status = ref<MqttStatus | null>(null);
 const loadingStatus = ref(false);
 
 async function fetchStatus() {
@@ -123,6 +148,101 @@ async function fetchStatus() {
   }
 }
 
+// Which brokers have opted in — drives the "no broker opted in" hint, since the
+// master switch alone publishes nothing.
+const neighborsBrokerNames = computed(() =>
+  customBrokers.value.filter(b => b.enabled && b.neighbors).map(b => b.name || '(unnamed)'),
+);
+
+function formatDuration(totalSeconds: number): string {
+  const secs = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(secs / 3600);
+  const mins = Math.floor((secs % 3600) / 60);
+  if (hours >= 1) return `${hours}h ${mins}m`;
+  if (mins >= 1) return `${mins}m`;
+  return `${secs}s`;
+}
+
+// Brokers the *running* daemon has opted in, which is not the same as the saved
+// config until the service restarts. Used to tell the two causes of the
+// `disabled` phase apart, and to flag brokers whose opt-in is already live.
+const liveNeighborsBrokers = computed(
+  () => status.value?.brokers?.filter(b => b.neighbors).length ?? 0,
+);
+
+const neighborsPhaseLabel = computed(() => {
+  const n = status.value?.neighbors;
+  if (!n) return '';
+  switch (n.phase) {
+    case 'active': return 'Publishing now';
+    case 'due': return 'Due — next cycle';
+    case 'scheduled':
+      return n.secs_until_next === null
+        ? 'Scheduled'
+        : `Next in ${formatDuration(n.secs_until_next)}`;
+    default:
+      // `disabled` covers both the master switch being off and no broker having
+      // opted in. A live opt-in with the phase still disabled means the former.
+      return liveNeighborsBrokers.value
+        ? 'Disabled — master switch off'
+        : 'Idle — no broker opted in';
+  }
+});
+
+const neighborsLastPublish = computed(() => {
+  const at = status.value?.neighbors?.last_publish_at;
+  if (!at) return '';
+  // Backend sends epoch seconds (time.time()); JS wants milliseconds.
+  return new Date(at * 1000).toLocaleString();
+});
+
+// ── Manual cycle trigger ──────────────────────────────────────────────────
+const isTriggering = ref(false);
+const triggerMsg = ref('');
+const triggerError = ref('');
+
+// Why the button is unavailable, or '' when it can be pressed. The trigger acts
+// on the *running* config, so an open edit is blocked rather than silently
+// running the last-saved settings.
+const triggerDisabledReason = computed(() => {
+  const n = status.value?.neighbors;
+  if (!status.value) return 'Status unavailable — the service may not be running.';
+  if (n === undefined || n === null) return 'This repeater build does not support manual triggering.';
+  if (isGlobalEditing.value) return 'Save or cancel your changes first.';
+  if (n.phase === 'active') return 'A cycle is already running.';
+  if (n.phase === 'disabled') return 'Enable publishing and opt a broker in first.';
+  return '';
+});
+
+async function triggerNeighborsCycle() {
+  if (triggerDisabledReason.value || isTriggering.value) return;
+  isTriggering.value = true;
+  triggerMsg.value = '';
+  triggerError.value = '';
+  try {
+    // A cycle runs for minutes; the repeater schedules it and returns at once,
+    // so the default timeout is plenty.
+    const res = await ApiService.post('/publish_neighbors', {});
+    if (res.success) {
+      triggerMsg.value = 'Cycle started — discovery and scope queries take a few minutes.';
+      await fetchStatus();
+    } else {
+      triggerError.value = res.error || 'Failed to start the cycle';
+    }
+  } catch (err: unknown) {
+    const e = err as { response?: { data?: { error?: string } }; message?: string };
+    triggerError.value = e?.response?.data?.error || e?.message || 'Request failed';
+  } finally {
+    isTriggering.value = false;
+  }
+}
+
+// Once the poll shows the cycle running, the status row says so — drop the
+// redundant banner instead of leaving it up until the next click.
+watch(() => status.value?.neighbors?.phase, (phase) => {
+  if (phase === 'active') triggerMsg.value = '';
+});
+
 // ── Sync form from store ──────────────────────────────────────────────────
 let _nextId = 1;
 function mkBroker(b: Partial<Omit<CustomBroker, '_id'>> = {}): CustomBroker {
@@ -134,6 +254,7 @@ function mkBroker(b: Partial<Omit<CustomBroker, '_id'>> = {}): CustomBroker {
     transport: b.transport ?? 'websockets',
     disallowedInput: Array.isArray(b.disallowedInput) ? [...b.disallowedInput] : [],
     retain_status: b.retain_status ?? false, base_topic: b.base_topic ?? '',
+    neighbors: b.neighbors ?? false,
     tls: { enabled: b.tls?.enabled ?? false, insecure: b.tls?.insecure ?? false },
   };
 }
@@ -144,6 +265,9 @@ function syncForm() {
   statusIntervalInput.value = c.status_interval ?? 300;
   ownerInput.value = c.owner ?? '';
   emailInput.value = c.email ?? '';
+  const n = c.neighbors ?? {};
+  neighborsEnabledInput.value = n.enabled ?? true;
+  neighborsIntervalInput.value = n.interval_hours ?? NEIGHBORS_DEFAULT_INTERVAL_HOURS;
   customBrokers.value = Array.isArray(c.brokers)
     ? (c.brokers as Record<string, unknown>[]).map(b => mkBroker(b as Partial<Omit<CustomBroker, '_id'>>))
     : [];
@@ -160,12 +284,20 @@ function buildPayload() {
     status_interval: statusIntervalInput.value,
     owner: ownerInput.value,
     email: emailInput.value,
+    // Only the two fields this form owns. The repeater merges them onto the
+    // stored block, so the tunables it does not surface (sweep budget, response
+    // window, …) survive a save from here.
+    neighbors: {
+      enabled: neighborsEnabledInput.value,
+      interval_hours: neighborsIntervalInput.value,
+    },
     brokers: customBrokers.value.map(b => {
       const base = {
         name: b.name, enabled: b.enabled, transport: b.transport,
         host: b.host, port: b.port, use_jwt_auth: b.use_jwt_auth,
         format: b.format, disallowed_packet_types: b.disallowedInput,
         base_topic: b.base_topic, retain_status: b.retain_status,
+        neighbors: b.neighbors,
         tls: { enabled: b.tls?.enabled ?? false, insecure: b.tls?.insecure ?? false },
       };
       return b.use_jwt_auth
@@ -176,6 +308,9 @@ function buildPayload() {
 }
 
 async function callSaveApi(): Promise<{ success: boolean; error?: string }> {
+  // The repeater rejects an out-of-range interval rather than clamping it, and a
+  // rejected POST drops the whole MQTT save — so catch it before the round trip.
+  if (neighborsIntervalError.value) return { success: false, error: neighborsIntervalError.value };
   try {
     const res = await ApiService.post('/update_mqtt_config', buildPayload());
     if (res.success) {
@@ -198,6 +333,8 @@ function startGlobalEditing() {
     interval: statusIntervalInput.value,
     owner: ownerInput.value,
     email: emailInput.value,
+    neighborsEnabled: neighborsEnabledInput.value,
+    neighborsInterval: neighborsIntervalInput.value,
     brokers: customBrokers.value.map(cloneBroker),
   };
   isGlobalEditing.value = true;
@@ -210,6 +347,8 @@ function cancelGlobalEditing() {
     statusIntervalInput.value = globalSnapshot.value.interval;
     ownerInput.value = globalSnapshot.value.owner;
     emailInput.value = globalSnapshot.value.email;
+    neighborsEnabledInput.value = globalSnapshot.value.neighborsEnabled;
+    neighborsIntervalInput.value = globalSnapshot.value.neighborsInterval;
     customBrokers.value = globalSnapshot.value.brokers.map(cloneBroker);
   }
   editingBrokerId.value = null;
@@ -493,9 +632,33 @@ onUnmounted(() => {
               <span class="w-1.5 h-1.5 rounded-full" :class="broker.status.connected ? 'bg-accent-green/opacity-light' : broker.status.reconnecting ? 'bg-accent-amber/opacity-light' : 'bg-accent-red/opacity-light'"></span>
               {{ broker.status.connected ? 'Connected' : broker.status.reconnecting ? 'Reconnecting…' : 'Disconnected' }}
             </span>
+            <!-- Live opt-in, i.e. what the running service loaded. Differs from
+                 the broker list below until the service restarts. -->
+            <span
+              v-if="broker.neighbors"
+              title="This connection is publishing the neighbours table"
+              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/opacity-light text-primary"
+            >
+              nbrs
+            </span>
           </div>
         </div>
         <div v-else class="text-sm text-content-muted/opacity-heavy italic">No broker connections configured.</div>
+
+        <!-- Neighbours schedule. Absent on repeaters that predate the feature,
+             so the row is omitted rather than shown as unknown. -->
+        <div v-if="status.neighbors" class="flex items-start gap-2 pt-1">
+          <span class="text-sm text-content-secondary dark:text-content-muted w-36 flex-shrink-0">Neighbours</span>
+          <div class="min-w-0">
+            <span :class="['inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium', status.neighbors.phase === 'disabled' ? 'bg-background-mute dark:bg-background-mute/opacity-heavy text-content-muted' : status.neighbors.phase === 'active' ? 'bg-accent-amber/opacity-light dark:bg-accent-amber/opacity-medium text-accent-amber' : 'bg-accent-green/opacity-light dark:bg-accent-green/opacity-medium text-accent-green']">
+              <span class="w-1.5 h-1.5 rounded-full" :class="status.neighbors.phase === 'disabled' ? 'bg-background-mute' : status.neighbors.phase === 'active' ? 'bg-accent-amber/opacity-light' : 'bg-accent-green/opacity-light'"></span>
+              {{ neighborsPhaseLabel }}
+            </span>
+            <p v-if="status.neighbors.last_result" class="text-xs text-content-secondary dark:text-content-muted mt-1">
+              Last cycle: {{ status.neighbors.last_result }}<span v-if="neighborsLastPublish"> · {{ neighborsLastPublish }}</span>
+            </p>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -699,6 +862,13 @@ onUnmounted(() => {
               </span>
               <span class="text-sm font-medium text-content-primary">{{ broker.name || '(unnamed)' }}</span>
               <span class="text-xs font-mono text-content-secondary dark:text-content-muted">{{ broker.host || '—' }}:{{ broker.port }}</span>
+              <span
+                v-if="broker.neighbors"
+                title="Publishes the neighbours table to this broker"
+                class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/opacity-light text-primary"
+              >
+                Neighbours
+              </span>
             </div>
             <div v-if="isGlobalEditing" class="flex items-center gap-1.5 flex-shrink-0">
               <button
@@ -720,6 +890,116 @@ onUnmounted(() => {
           </div>
 
         </div>
+      </div>
+    </div>
+
+    <!-- ── Neighbour Publishing ───────────────────────────────────────── -->
+    <div class="cfg-card p-6">
+      <div class="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <h3 class="text-lg font-semibold text-content-primary mb-1">Neighbour Publishing</h3>
+          <p class="text-sm text-content-secondary dark:text-content-muted">
+            Periodically discovers zero-hop neighbours and their region scopes, then publishes the table
+            to the <span class="font-mono text-xs">neighbors</span> topic. Enable it per broker in the broker editor above.
+          </p>
+        </div>
+        <!-- Manual trigger. Acts on the running config, not the form, so it is
+             disabled while an edit is open. -->
+        <button
+          @click="triggerNeighborsCycle"
+          :disabled="!!triggerDisabledReason || isTriggering"
+          :title="triggerDisabledReason || 'Run a discovery and publish cycle now'"
+          :class="[
+            'flex-shrink-0 inline-flex items-center gap-1.5 whitespace-nowrap',
+            !!triggerDisabledReason || isTriggering ? 'px-3 py-1.5 text-sm rounded-lg border border-stroke-subtle dark:border-stroke/opacity-medium text-content-muted/opacity-heavy cursor-not-allowed' : 'btn-primary',
+          ]"
+        >
+          <svg class="w-3.5 h-3.5" :class="isTriggering ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          {{ isTriggering ? 'Starting…' : 'Publish Now' }}
+        </button>
+      </div>
+
+      <!-- Trigger feedback -->
+      <div
+        v-if="triggerMsg"
+        class="mb-4 rounded-lg border border-accent-green/opacity-heavy bg-accent-green/opacity-light dark:bg-accent-green/opacity-medium p-3 text-sm text-accent-green"
+      >
+        {{ triggerMsg }}
+      </div>
+      <div
+        v-if="triggerError"
+        class="mb-4 rounded-lg border border-accent-red dark:border-accent-red/opacity-heavy bg-accent-red/opacity-light dark:bg-accent-red/opacity-medium p-3 text-sm text-accent-red"
+      >
+        {{ triggerError }}
+      </div>
+
+      <!-- View mode -->
+      <div v-if="!isGlobalEditing" class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
+        <div class="flex flex-col py-1 border-b border-stroke-subtle dark:border-stroke/opacity-light">
+          <span class="text-content-secondary dark:text-content-muted text-xs sm:text-sm">Feature</span>
+          <span class="text-content-primary text-sm mt-0.5">{{ neighborsEnabledInput ? 'Enabled' : 'Disabled' }}</span>
+        </div>
+        <div class="flex flex-col py-1 border-b border-stroke-subtle dark:border-stroke/opacity-light">
+          <span class="text-content-secondary dark:text-content-muted text-xs sm:text-sm">Interval</span>
+          <span class="text-content-primary text-sm mt-0.5">{{ neighborsIntervalInput }}h</span>
+        </div>
+        <div class="flex flex-col py-1 sm:col-span-2">
+          <span class="text-content-secondary dark:text-content-muted text-xs sm:text-sm">Publishing to</span>
+          <span v-if="neighborsBrokerNames.length" class="text-content-primary text-sm mt-0.5">
+            {{ neighborsBrokerNames.join(', ') }}
+          </span>
+          <span v-else class="text-content-muted/opacity-heavy text-sm italic mt-0.5">
+            No enabled broker has opted in — nothing is published.
+          </span>
+        </div>
+      </div>
+
+      <!-- Edit mode -->
+      <div v-else class="space-y-4">
+        <div class="flex items-start gap-3">
+          <button
+            type="button"
+            @click="neighborsEnabledInput = !neighborsEnabledInput"
+            :class="['relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none mt-0.5', neighborsEnabledInput ? 'bg-primary' : 'bg-background-mute dark:bg-white/opacity-subtle']"
+          >
+            <span :class="['pointer-events-none absolute top-0.5 left-0.5 inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ease-in-out', neighborsEnabledInput ? 'translate-x-4' : 'translate-x-0']" />
+          </button>
+          <div>
+            <span class="text-sm font-medium text-content-primary">Enable Neighbour Publishing</span>
+            <p class="text-xs text-content-secondary dark:text-content-muted mt-0.5">
+              Master switch. Each cycle transmits a discovery broadcast plus one scope query per
+              neighbour, so it costs airtime — turn it off to stop the cycle for every broker at once.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs sm:text-sm text-content-secondary dark:text-content-muted mb-1">
+              Interval
+              <span class="text-content-muted/opacity-heavy text-xs">
+                (hours, {{ NEIGHBORS_MIN_INTERVAL_HOURS }}–{{ NEIGHBORS_MAX_INTERVAL_HOURS }})
+              </span>
+            </label>
+            <input
+              v-model.number="neighborsIntervalInput"
+              type="number"
+              :min="NEIGHBORS_MIN_INTERVAL_HOURS"
+              :max="NEIGHBORS_MAX_INTERVAL_HOURS"
+              step="1"
+              class="cfg-input font-mono"
+              :class="neighborsIntervalError ? 'border-accent-red' : ''"
+            />
+            <p v-if="neighborsIntervalError" class="mt-1 text-xs text-accent-red">{{ neighborsIntervalError }}</p>
+          </div>
+        </div>
+
+        <p v-if="neighborsEnabledInput && !neighborsBrokerNames.length" class="text-xs text-accent-amber">
+          No enabled broker has opted in yet. Turn on “Publish Neighbours” in a broker’s editor for
+          anything to be published.
+        </p>
       </div>
     </div>
 

@@ -249,6 +249,19 @@ export interface SystemStats {
       status_interval?: number;
       owner?: string;
       email?: string;
+      // Periodic neighbours publication. `enabled` is the master switch
+      // (defaults on repeater-side); the per-broker `neighbors` flag below is
+      // what actually opts a broker into the topic.
+      neighbors?: {
+        enabled?: boolean;
+        interval_hours?: number;
+        discovery_timeout_seconds?: number;
+        scope_response_timeout_seconds?: number;
+        max_sweep_seconds?: number;
+        duty_cycle_abort_seconds?: number;
+        max_neighbors?: number;
+        max_neighbor_age_seconds?: number;
+      };
       brokers?: Array<{
         enabled: boolean;
         name: string;
@@ -263,6 +276,7 @@ export interface SystemStats {
         format: string;
         disallowed_packet_types?: string[];
         retain_status?: boolean;
+        neighbors?: boolean;
         tls?: {
           enabled?: boolean;
           insecure?: boolean;

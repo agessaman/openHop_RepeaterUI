@@ -43,6 +43,13 @@ const isExpanded = computed({
 // Memoize whether node has children to prevent unnecessary reactivity
 const hasChildren = computed(() => props.node.children.length > 0);
 
+/** Public region names use a '#' prefix; their transport key is derived, not shown. */
+const isPublicRegion = computed(() => props.node.name.startsWith('#'));
+
+const displayName = computed(() =>
+  isPublicRegion.value ? props.node.name.slice(1) : props.node.name,
+);
+
 
 function handleRowClick() {
   if (props.unlocked) {
@@ -90,201 +97,202 @@ function copyToClipboard(event: Event) {
 </script>
 
 <template>
-  <div class="select-none">
+  <!--
+    A container, not the viewport, decides what fits here: this tree sits in a
+    half-width column on the Region Configuration page, so `sm:`-style breakpoints
+    would show a full row in a container far too narrow for it. The `@` variants
+    below measure this node instead, which also accounts for the indentation the
+    tree adds as it gets deeper.
+  -->
+  <div class="select-none @container">
     <!-- Node Content -->
     <div
       :class="[
-        'flex flex-wrap sm:flex-nowrap items-start sm:items-center gap-1 sm:gap-2 py-2 px-2 sm:px-3 rounded-lg border transition-colors duration-150',
+        'flex items-center justify-between gap-3 px-3 py-2 rounded-lg border transition-colors duration-150',
         props.disabled ? 'opacity-50' : '',
         props.unlocked && selectedNodeId === node.id
           ? 'bg-primary/opacity-light border-primary/opacity-medium text-content-primary'
-          : 'cfg-card text-content-primary/opacity-heavy',
+          : 'bg-background-mute dark:bg-white/opacity-subtle border-stroke-subtle dark:border-stroke/opacity-medium text-content-primary/opacity-heavy',
         props.unlocked && selectedNodeId !== node.id ? 'hover:bg-stroke-subtle/40 dark:hover:bg-white/opacity-light hover:border-stroke dark:hover:border-white/15' : '',
         hasChildren && !props.disabled ? 'cursor-pointer' : '',
         `ml-${level * 4}`,
       ]"
       @click.stop="!props.disabled && handleRowClick()"
     >
-      <!-- Expand/Collapse Arrow -->
-      <div
-        class="flex-shrink-0 w-3 h-3 sm:w-4 sm:h-4 flex items-center justify-center"
-        @click.stop="toggleExpanded"
-      >
-        <svg
+      <div class="min-w-0 flex items-start gap-1.5">
+        <!-- Expand/Collapse Arrow — only when there are children to expand -->
+        <div
           v-if="hasChildren"
-          :class="[
-            'w-2.5 h-2.5 sm:w-3 sm:h-3 transition-transform duration-200',
-            isExpanded ? 'rotate-90' : 'rotate-0',
-          ]"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+          class="flex-shrink-0 w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex items-center justify-center"
+          @click.stop="toggleExpanded"
         >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-        </svg>
-      </div>
-
-      <!-- Node Icon -->
-      <div class="flex-shrink-0">
-        <!-- Region icon (hashtag) for names starting with # -->
-        <svg
-          v-if="props.node.name.startsWith('#')"
-          class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-secondary"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"
-          />
-        </svg>
-        <!-- Private key icon for all other names -->
-        <svg
-          v-else
-          class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-accent-green"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
-          />
-        </svg>
-      </div>
-
-      <!-- Node Name -->
-      <span
-        :class="[
-          'font-mono text-xs sm:text-sm transition-colors duration-200 break-all',
-          selectedNodeId === node.id ? 'text-primary font-medium' : '',
-        ]"
-      >
-        {{ node.name.startsWith('#') ? node.name.slice(1) : node.name }}
-      </span>
-
-      <!-- Transport Key Display -->
-      <div v-if="node.transport_key" class="hidden sm:flex items-center gap-1 ml-2">
-        <div class="relative group">
-          <!-- Key Icon with tooltip -->
-          <button
-            @click="toggleShowFullKey"
-            class="p-1 rounded hover:bg-stroke-subtle dark:hover:bg-white/opacity-light transition-colors"
-            :title="showFullKey ? 'Hide full key' : 'Show full key'"
+          <svg
+            :class="[
+              'w-2.5 h-2.5 sm:w-3 sm:h-3 transition-transform duration-200',
+              isExpanded ? 'rotate-90' : 'rotate-0',
+            ]"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
           >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <!-- Region icon (hashtag) for public regions; private key icon otherwise -->
             <svg
-              class="w-3 h-3 text-content-muted dark:text-on-dark-secondary hover:text-content-secondary"
+              v-if="isPublicRegion"
+              class="w-3.5 h-3.5 flex-shrink-0 text-secondary"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
+              aria-hidden="true"
             >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 stroke-width="2"
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"
               />
             </svg>
-          </button>
-
-          <!-- Truncated key display -->
-          <span
-            v-if="!showFullKey"
-            class="text-xs font-mono text-content-secondary dark:text-on-dark-secondary bg-stroke-subtle/40 dark:bg-white/opacity-subtle px-1.5 py-0.5 rounded border border-stroke-subtle dark:border-white/opacity-light"
-          >
-            {{ getTruncatedKey(node.transport_key) }}
-          </span>
-
-          <!-- Full key display - improved popup -->
-          <div
-            v-if="showFullKey"
-            class="modal-backdrop"
-            @click="showFullKey = false"
-          >
-            <div
-              class="bg-black/opacity-medium border border-white/opacity-medium rounded-lg shadow-lg p-6 max-w-2xl w-full mx-4"
-              @click.stop
+            <svg
+              v-else
+              class="w-3.5 h-3.5 flex-shrink-0 text-accent-green"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
             >
-              <div class="flex justify-between items-start mb-4">
-                <h3 class="text-lg font-semibold text-white">Transport Key</h3>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+              />
+            </svg>
+
+            <span
+              :class="[
+                'font-mono text-sm font-medium truncate transition-colors duration-200',
+                node.floodPolicy === 'allow'
+                  ? 'text-accent-green'
+                  : 'text-accent-red',
+              ]"
+            >
+              {{ displayName }}
+            </span>
+
+            <!-- Transport key: private keys only — public # regions derive theirs from the name -->
+            <div
+              v-if="!isPublicRegion && node.transport_key"
+              class="hidden @xl:flex items-center gap-1"
+            >
+              <div class="relative group">
                 <button
-                  @click="showFullKey = false"
-                  class="text-white/60 hover:text-white transition-colors"
+                  @click="toggleShowFullKey"
+                  class="p-1 rounded hover:bg-stroke-subtle dark:hover:bg-white/opacity-light transition-colors"
+                  :title="showFullKey ? 'Hide full key' : 'Show full key'"
                 >
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg
+                    class="w-3 h-3 text-content-muted dark:text-on-dark-secondary hover:text-content-secondary"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
                       stroke-width="2"
-                      d="M6 18L18 6M6 6l12 12"
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
                     />
                   </svg>
                 </button>
-              </div>
 
-              <div class="bg-black/opacity-medium border border-white/opacity-light rounded-md p-4 mb-4">
-                <div class="text-sm font-mono text-white/80 break-all leading-relaxed">
-                  {{ node.transport_key }}
+                <span
+                  v-if="!showFullKey"
+                  class="text-xs font-mono text-content-secondary dark:text-on-dark-secondary bg-stroke-subtle/40 dark:bg-white/opacity-subtle px-1.5 py-0.5 rounded border border-stroke-subtle dark:border-white/opacity-light"
+                >
+                  {{ getTruncatedKey(node.transport_key) }}
+                </span>
+
+                <div
+                  v-if="showFullKey"
+                  class="modal-backdrop"
+                  @click="showFullKey = false"
+                >
+                  <div
+                    class="bg-black/opacity-medium border border-white/opacity-medium rounded-lg shadow-lg p-6 max-w-2xl w-full mx-4"
+                    @click.stop
+                  >
+                    <div class="flex justify-between items-start mb-4">
+                      <h3 class="text-lg font-semibold text-white">Transport Key</h3>
+                      <button
+                        @click="showFullKey = false"
+                        class="text-white/60 hover:text-white transition-colors"
+                      >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+
+                    <div class="bg-black/opacity-medium border border-white/opacity-light rounded-md p-4 mb-4">
+                      <div class="text-sm font-mono text-white/80 break-all leading-relaxed">
+                        {{ node.transport_key }}
+                      </div>
+                    </div>
+
+                    <div class="flex justify-end">
+                      <button
+                        @click="copyToClipboard"
+                        :class="['flex items-center gap-2 transition-colors', keyCopied ? 'btn-primary' : 'btn-success']"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                          />
+                        </svg>
+                        <CopyLabel :copied="keyCopied" label="Copy Key" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-
-              <div class="flex justify-end">
-                <button
-                  @click="copyToClipboard"
-                  :class="['flex items-center gap-2 transition-colors', keyCopied ? 'btn-primary' : 'btn-success']"
-                >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                    />
-                  </svg>
-                  <CopyLabel :copied="keyCopied" label="Copy Key" />
-                </button>
-              </div>
             </div>
+          </div>
+
+          <!-- Last Heard — second line, mirrors Discovered Regions' "N neighbours" -->
+          <div
+            v-if="node.last_used"
+            class="text-content-muted text-[10px] sm:text-xs truncate"
+            :title="node.last_used.toLocaleString()"
+          >
+            Last Heard: {{ formatTimeAgo(node.last_used) }}
+          </div>
+          <div v-else class="text-content-muted/opacity-heavy text-[10px] sm:text-xs italic truncate">
+            Last Heard: Never
           </div>
         </div>
       </div>
 
-      <!-- Last Used Display and Flood Policy Container -->
-      <div class="flex items-center gap-2 sm:gap-3 ml-auto flex-shrink-0">
-        <!-- Last Heard -->
-        <div v-if="node.last_used" class="hidden sm:flex items-center gap-1">
-          <span class="text-xs text-content-muted dark:text-on-dark-muted">Last Heard:</span>
-          <span class="text-xs text-content-secondary dark:text-on-dark-secondary" :title="node.last_used.toLocaleString()">
-            {{ formatTimeAgo(node.last_used) }}
-          </span>
-        </div>
-        <div v-else class="hidden sm:flex items-center gap-1">
-          <span class="text-xs text-content-muted dark:text-on-dark-subtle">Last Heard:</span>
-          <span class="text-xs text-content-muted dark:text-on-dark-subtle italic">Never</span>
-        </div>
-
-        <!-- Flood Policy -->
-        <span
-          :class="[
-            'text-[10px] sm:text-xs',
-            node.floodPolicy === 'allow' ? 'text-accent-green/opacity-heavy' : 'text-accent-red/opacity-heavy',
-          ]"
-        >
-          Flood: {{ node.floodPolicy === 'allow' ? 'Allow' : 'Deny' }}
-        </span>
-
-        <!-- Inline Edit / Delete (unlocked mode) -->
+      <!-- Actions -->
+      <div class="flex flex-wrap items-center gap-2 sm:gap-3 flex-shrink-0">
         <template v-if="props.unlocked">
           <button
             @click.stop="emit('edit', node.id)"
@@ -303,10 +311,9 @@ function copyToClipboard(event: Event) {
           </button>
         </template>
 
-        <!-- Children Count Badge -->
         <span
           v-if="hasChildren && !props.unlocked"
-          class="hidden sm:inline-block px-2 py-1 bg-stroke-subtle dark:bg-white/opacity-subtle text-content-secondary dark:text-on-dark-secondary text-xs rounded-full ml-1"
+          class="hidden @sm:inline-block px-2 py-1 bg-stroke-subtle dark:bg-white/opacity-subtle text-content-secondary dark:text-on-dark-secondary text-xs rounded-full"
         >
           {{ node.children.length }}
         </span>
@@ -322,7 +329,7 @@ function copyToClipboard(event: Event) {
       leave-from-class="opacity-100 max-h-screen overflow-visible"
       leave-to-class="opacity-0 max-h-0 overflow-hidden"
     >
-      <div v-if="isExpanded && node.children.length > 0" class="space-y-1">
+      <div v-if="isExpanded && node.children.length > 0" class="space-y-2">
         <TreeNode
           v-for="child in node.children"
           :key="child.id"

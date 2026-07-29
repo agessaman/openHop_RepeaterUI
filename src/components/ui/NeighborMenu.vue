@@ -53,16 +53,27 @@ interface Neighbor {
 interface Props {
   neighbor: Neighbor;
   canPing?: boolean;
+  /** Off by default: only repeater identities answer the region-scopes request —
+   *  core routes it straight to the login handler for a room server. */
+  canQueryScopes?: boolean;
 }
 
 interface Emits {
   (e: 'ping', neighbor: Neighbor): void;
   (e: 'delete', neighbor: Neighbor): void;
   (e: 'show-details', neighbor: Neighbor): void;
+  (e: 'query-scopes', neighbor: Neighbor): void;
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
+
+// Kept in step with the `w-44` class on the menu below, which the mobile
+// overflow check needs to know before the menu is rendered and measurable.
+// Widened from w-36/144px because "Query Scopes" did not fit on one line: a
+// button is text-align:center by default, so the wrapped label centred itself and
+// read as an indent next to the single-line items.
+const MENU_WIDTH_PX = 176;
 
 const showMenu = ref(false);
 const buttonRef = ref<HTMLButtonElement>();
@@ -90,6 +101,11 @@ const handlePing = () => {
 const handleShowDetails = () => {
   closeMenu();
   emit('show-details', props.neighbor);
+};
+
+const handleQueryScopes = () => {
+  closeMenu();
+  emit('query-scopes', props.neighbor);
 };
 
 const handleDelete = () => {
@@ -121,7 +137,7 @@ const toggleMenu = async () => {
     // Calculate position
     const rect = buttonRef.value.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
-    const menuWidth = 144; // w-36 = 144px
+    const menuWidth = MENU_WIDTH_PX;
 
     // Check if we're on mobile and if menu would overflow on the right
     const isMobile = viewportWidth < 1024; // lg breakpoint
@@ -197,14 +213,14 @@ onUnmounted(() => {
       <div
         v-if="showMenu"
         ref="menuRef"
-        class="fixed w-36 bg-white dark:bg-surface-elevated backdrop-blur-lg border border-stroke-subtle dark:border-white/opacity-medium rounded-[15px] shadow-2xl z-[450]"
+        class="fixed w-44 bg-white dark:bg-surface-elevated backdrop-blur-lg border border-stroke-subtle dark:border-white/opacity-medium rounded-[15px] shadow-2xl z-[450]"
         :style="{ top: menuPosition.top + 'px', left: menuPosition.left + 'px' }"
         data-menu-container
       >
         <div class="py-2">
           <button
             @click="handleShowDetails"
-            class="flex items-center gap-3 w-full px-4 py-3 text-sm text-content-primary hover:bg-primary/opacity-light transition-colors border-b border-stroke-subtle dark:border-white/opacity-light"
+            class="flex items-center gap-3 w-full px-4 py-3 text-left text-sm text-content-primary hover:bg-primary/opacity-light transition-colors border-b border-stroke-subtle dark:border-white/opacity-light"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -219,7 +235,7 @@ onUnmounted(() => {
 
           <button
             @click="handlePing"
-            class="flex items-center gap-3 w-full px-4 py-3 text-sm text-content-primary hover:bg-primary/opacity-light transition-colors border-b border-stroke-subtle dark:border-white/opacity-light"
+            class="flex items-center gap-3 w-full px-4 py-3 text-left text-sm text-content-primary hover:bg-primary/opacity-light transition-colors border-b border-stroke-subtle dark:border-white/opacity-light"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -233,8 +249,29 @@ onUnmounted(() => {
           </button>
 
           <button
+            v-if="canQueryScopes"
+            @click="handleQueryScopes"
+            class="flex items-center gap-3 w-full px-4 py-3 text-left text-sm text-content-primary hover:bg-primary/opacity-light transition-colors border-b border-stroke-subtle dark:border-white/opacity-light"
+          >
+            <!-- Inline rather than the lucide component: that one carries
+                 width/height="24" attributes of its own, which pushed this row's
+                 label out of line with the others. Same tag glyph, same markup
+                 shape as every sibling item here. -->
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12.586 2.586A2 2 0 0011.172 2H4a2 2 0 00-2 2v7.172a2 2 0 00.586 1.414l8.704 8.704a2.426 2.426 0 003.42 0l6.58-6.58a2.426 2.426 0 000-3.42z"
+              />
+              <circle cx="7.5" cy="7.5" r="1.25" fill="currentColor" stroke="none" />
+            </svg>
+            <span class="font-medium">Query Scopes</span>
+          </button>
+
+          <button
             @click="handleDelete"
-            class="flex items-center gap-3 w-full px-4 py-3 text-sm text-accent-red hover:bg-accent-red/opacity-light transition-colors"
+            class="flex items-center gap-3 w-full px-4 py-3 text-left text-sm text-accent-red hover:bg-accent-red/opacity-light transition-colors"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path

@@ -4,8 +4,10 @@ import TreeNode from '@/components/ui/TreeNode.vue';
 import KeyModal from '@/components/modals/KeyModal.vue';
 import DeleteConfirmModal from '@/components/modals/DeleteConfirmModal.vue';
 import UnsavedChangesModal from '@/components/ui/UnsavedChangesModal.vue';
+import DiscoveredRegions from '@/components/configuration/DiscoveredRegions.vue';
 import { useTreeStateStore } from '@/stores/treeState';
 import { useSystemStore } from '@/stores/system';
+import { useNeighborStore } from '@/stores/neighbors';
 import ApiService from '@/utils/api';
 import type { TreeNodeData } from '@/types/tree';
 import Spinner from '@/components/ui/Spinner.vue';
@@ -15,6 +17,7 @@ defineOptions({ name: 'TransportKeys' });
 
 const treeStore = useTreeStateStore();
 const systemStore = useSystemStore();
+const neighborStore = useNeighborStore();
 
 // ── Edit state ────────────────────────────────────────────────────────────
 const isEditing = ref(false);
@@ -141,7 +144,59 @@ const loadTransportKeys = async () => {
   }
 };
 
-onMounted(loadTransportKeys);
+// ── Discovered regions ────────────────────────────────────────────────────
+// Sourced from the scope answers neighbours gave, which the repeater stores for
+// the Neighbors page; nothing is queried over the radio from here.
+const discoveredLoading = ref(false);
+const discoveredError = ref<string | null>(null);
+
+const loadDiscoveredRegions = async () => {
+  discoveredLoading.value = true;
+  discoveredError.value = null;
+  const ok = await neighborStore.fetchScopes();
+  if (!ok) {
+    discoveredError.value = 'The repeater did not return the stored scope answers.';
+  }
+  discoveredLoading.value = false;
+};
+
+/** Region names already in the list, '#'-stripped and lowercased for matching. */
+const carriedRegionNames = computed(() => {
+  const names = new Set<string>();
+  for (const { node } of flattenTree(transportKeysData.value)) {
+    const name = (node.name || '').trim();
+    names.add((name.startsWith('#') ? name.slice(1) : name).toLowerCase());
+  }
+  return names;
+});
+
+// Compared against the working tree, not the saved one, so a region added below
+// flips to "Carried" straight away instead of offering to be added twice.
+const discoveredRegions = computed(() =>
+  neighborStore.discoveredScopes.map((region) => ({
+    ...region,
+    carried: carriedRegionNames.value.has(region.name.toLowerCase()),
+  })),
+);
+
+function addDiscoveredRegion(name: string) {
+  if (!isEditing.value || isSaving.value) return;
+  if (carriedRegionNames.value.has(name.toLowerCase())) return;
+  // A draft node like any other addition on this tab: the '#' prefix matches what
+  // the region editor stores, flood 'allow' is what makes it advertised, and the
+  // transport key is left for the repeater to derive from the name on save.
+  transportKeysData.value.push({
+    id: nextTempId(),
+    name: `#${name}`,
+    floodPolicy: 'allow',
+    children: [],
+  });
+}
+
+onMounted(async () => {
+  await loadTransportKeys();
+  await loadDiscoveredRegions();
+});
 
 // ── Edit workflow ─────────────────────────────────────────────────────────
 function startEditing() {
@@ -464,15 +519,19 @@ defineExpose({ requestLeave, isEditing });
       </div>
     </div>
 
+    <!-- Regions + Discovered Regions: side by side on desktop, stacked on mobile -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
     <!-- Tree Viewer -->
-    <div class="cfg-section space-y-4" @click="isEditing && treeStore.setSelectedNode(null)">
-      <h3 class="text-lg font-semibold text-content-primary">Regions</h3>
-      <p v-if="isEditing" class="text-xs text-content-muted pb-1">
-        To add a child region, click on a region to select it, then click "Add Region".
-      </p>
+    <div class="cfg-section space-y-4 h-full flex flex-col" @click="isEditing && treeStore.setSelectedNode(null)">
+      <div>
+        <h3 class="text-lg font-semibold text-content-primary">Regions</h3>
+        <p class="text-content-secondary dark:text-content-muted text-xs mt-1">
+          Regional key hierarchy carried by this repeater.
+        </p>
+      </div>
 
       <!-- Loading State -->
-      <div v-if="loading" class="flex items-center justify-center py-8">
+      <div v-if="loading" class="flex items-center py-8">
         <Spinner />
         <span class="ml-2 text-content-secondary dark:text-content-muted">Loading regions…</span>
       </div>
@@ -481,7 +540,7 @@ defineExpose({ requestLeave, isEditing });
       <div v-else-if="error" class="text-center py-8">
         <div class="text-accent-red mb-2">⚠️ Error loading regions</div>
         <div class="text-content-secondary dark:text-content-muted text-sm">{{ error }}</div>
-        <button @click="loadTransportKeys" class="btn-success mt-4">
+        <button @click="loadTransportKeys" class="cfg-btn-secondary mt-4">
           Retry
         </button>
       </div>
@@ -495,19 +554,34 @@ defineExpose({ requestLeave, isEditing });
       </div>
 
       <!-- Tree Data -->
-      <div v-else class="space-y-2">
-        <TreeNode
-          v-for="node in transportKeysData"
-          :key="node.id"
-          :node="node"
-          :selected-node-id="treeStore.selectedNodeId.value"
-          :level="0"
-          :unlocked="isEditing"
-          @select="selectNode"
-          @edit="editNodeById"
-          @delete="deleteNodeById"
-        />
-      </div>
+      <template v-else>
+        <div class="space-y-2 flex-1">
+          <TreeNode
+            v-for="node in transportKeysData"
+            :key="node.id"
+            :node="node"
+            :selected-node-id="treeStore.selectedNodeId.value"
+            :level="0"
+            :unlocked="isEditing"
+            @select="selectNode"
+            @edit="editNodeById"
+            @delete="deleteNodeById"
+          />
+        </div>
+        <p v-if="isEditing" class="text-content-muted text-xs">
+          To add a child region, click on a region to select it, then click "Add Region".
+        </p>
+      </template>
+    </div>
+
+      <DiscoveredRegions
+        :regions="discoveredRegions"
+        :loading="discoveredLoading"
+        :error="discoveredError"
+        :can-add="isEditing && !isSaving"
+        @add="addDiscoveredRegion"
+        @refresh="loadDiscoveredRegions"
+      />
     </div>
 
     <!-- Add Modal -->
