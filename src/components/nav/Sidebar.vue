@@ -174,7 +174,21 @@ function filterNavItemsBySearch(items: NavItemConfig[], query: string): NavItemC
   }, []);
 }
 
-const capabilityFilteredNavItems = computed(() => filterNavItems(navigationItems));
+function flattenChildrenForDisplay(items: NavItemConfig[]): NavItemConfig[] {
+  return items.flatMap((item) => {
+    if (!item.children?.length) return [item];
+    return flattenChildrenForDisplay(item.children);
+  });
+}
+
+function flattenNavItemsForDisplay(items: NavItemConfig[]): NavItemConfig[] {
+  return items.map((item) => {
+    if (!item.children?.length) return item;
+    return { ...item, children: flattenChildrenForDisplay(item.children) };
+  });
+}
+
+const capabilityFilteredNavItems = computed(() => flattenNavItemsForDisplay(filterNavItems(navigationItems)));
 const visibleNavItems = computed(() => filterNavItemsBySearch(capabilityFilteredNavItems.value, navSearch.value));
 
 // ── Status card ───────────────────────────────────────────────────────────────
