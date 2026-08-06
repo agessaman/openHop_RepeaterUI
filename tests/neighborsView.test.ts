@@ -97,10 +97,10 @@ describe('Neighbors view hours selection', () => {
   it('persists the selected hours value in local preferences', async () => {
     neighborStore.advertsByType = { '2': [] };
     const wrapper = mount(NeighborsView);
-    const select = wrapper.findAll('select').at(0);
+    const select = wrapper.findAll('select')[0];
 
     expect(select).toBeTruthy();
-    await select!.setValue('168');
+    await select.setValue('168');
 
     expect(storage.get('pymc_pref_neighbors_selectedHours')).toBe('168');
     expect(neighborStore.fetchAll).toHaveBeenCalledWith(168);
