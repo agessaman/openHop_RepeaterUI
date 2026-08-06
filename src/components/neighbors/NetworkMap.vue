@@ -353,20 +353,21 @@ const initializeOpenStreetMap = async () => {
       'Hybrid Node': MAP_COLORS.hybrid,
     };
 
-    // Create animated connection lines (extracted from original code)
+    // Create connection lines that render immediately so they stay visible across zoom changes.
     const createAnimatedConnectionLine = (
       advert: Advert,
       baseLat: number,
       baseLng: number,
       nodeColor: string,
       animationDelay = 0,
+      forceLine = false,
     ) => {
       if (!map) {
         return;
       }
 
       // Only zero-hop contacts should have a connection line to base station.
-      if (advert.zero_hop !== true) {
+      if (!forceLine && advert.zero_hop !== true) {
         return;
       }
 
@@ -386,112 +387,113 @@ const initializeOpenStreetMap = async () => {
 
       // Style lines based on route type - original logic
       if (routeType === 2) {
-        // Direct connection - solid bright line
         lineColor = MAP_COLORS.directLine;
         lineWeight = 4;
         lineOpacity = 0.9;
       } else if (routeType === 1) {
-        // Flood routing - dashed line
         lineColor = MAP_COLORS.floodLine;
         dashArray = '10, 5';
         lineOpacity = 0.8;
       } else if (routeType === 3) {
-        // Transport Direct - solid thick secondary
         lineColor = MAP_COLORS.transportDirectLine;
         lineWeight = 5;
         lineOpacity = 0.95;
       } else if (routeType === 0) {
-        // Transport Flood - dashed red
         lineColor = MAP_COLORS.transportFloodLine;
         dashArray = '12, 6';
         lineOpacity = 0.8;
       } else {
-        // Unknown route type - dotted line
         lineColor = MAP_COLORS.unknown;
         dashArray = '2, 5';
         lineOpacity = 0.6;
       }
 
-      // Create animated line that builds up over time - ORIGINAL ANIMATION
       const startPoint: [number, number] = [baseLat, baseLng];
       const endPoint: [number, number] = [endLat, endLng];
 
-      // Create the final line first (hidden)
       const finalLine = L.polyline([startPoint, endPoint], {
         color: lineColor,
         weight: lineWeight,
-        opacity: 0,
+        opacity: lineOpacity,
         dashArray: dashArray,
         className: 'connection-line',
-      }).addTo(map!);
+        interactive: true,
+        smoothFactor: 0,
+      }).addTo(map);
 
-      // Create animation line (will be removed after animation)
-      const animationLine = L.polyline([startPoint, startPoint], {
-        color: lineColor,
-        weight: lineWeight,
-        opacity: 0,
-        dashArray: dashArray,
-        className: 'connection-line animated-line',
-      }).addTo(map!);
+      finalLine.bringToFront();
+      requestAnimationFrame(() => {
+        finalLine.redraw();
+        finalLine.bringToFront();
+      });
 
-      // Animate the line drawing
-      setTimeout(() => {
-        let step = 0;
-        const steps = 30;
-        animationLine.setStyle({ opacity: lineOpacity + 0.2 });
+      finalLine.on('mouseover', () => {
+        finalLine.setStyle({
+          weight: lineWeight + 2,
+          opacity: Math.min(lineOpacity + 0.2, 1),
+        });
+      });
 
-        const animate = () => {
-          step++;
-          const progress = step / steps;
-          const currentLat = startPoint[0] + (endPoint[0] - startPoint[0]) * progress;
-          const currentLng = startPoint[1] + (endPoint[1] - startPoint[1]) * progress;
+      finalLine.on('mouseout', () => {
+        finalLine.setStyle({
+          weight: lineWeight,
+          opacity: lineOpacity,
+        });
+      });
 
-          animationLine.setLatLngs([startPoint, [currentLat, currentLng]]);
+      const distance = calculateDistance(baseLat, baseLng, endLat, endLng);
+      finalLine.bindPopup(`
+        <div class="p-2">
+          <strong style="color: ${nodeColor}">Connection to ${advert.node_name || 'Unknown Node'}</strong><br>
+          <span class="text-sm" style="color: ${MAP_COLORS.popupText};">Distance: ${distance.toFixed(2)} km</span><br>
+          <span class="text-sm" style="color: ${MAP_COLORS.popupText};">Route: ${formatRouteType(advert.route_type)}</span><br>
+          <span class="text-sm" style="color: ${MAP_COLORS.popupText};">Signal: ${formatRSSI(advert.rssi)} / ${formatSNR(advert.snr)}</span>
+        </div>
+      `);
 
-          if (step < steps) {
-            setTimeout(animate, 30);
-          } else {
-            setTimeout(() => {
-              if (map && animationLine) {
-                animationLine.remove(); // Remove animation line
-              }
+      connectionLines.value.push(finalLine);
 
-              // Show final line with proper opacity
-              finalLine.setStyle({ opacity: lineOpacity });
+      if (animationDelay > 0) {
+        setTimeout(() => {
+          finalLine.setStyle({ opacity: Math.min(lineOpacity + 0.1, 1) });
+          finalLine.redraw();
+          finalLine.bringToFront();
+        }, animationDelay);
+      }
+    };
 
-              // Add hover effects to final line
-              finalLine.on('mouseover', () => {
-                finalLine.setStyle({
-                  weight: lineWeight + 2,
-                  opacity: Math.min(lineOpacity + 0.3, 1),
-                });
-              });
+    const allClusterFeatures = prepareClusterData(props.adverts);
 
-              finalLine.on('mouseout', () => {
-                finalLine.setStyle({
-                  weight: lineWeight,
-                  opacity: lineOpacity,
-                });
-              });
+    const renderConnectionLines = () => {
+      // Clear existing connection lines
+      connectionLines.value.forEach((line) => {
+        if (map) {
+          line.remove();
+        }
+      });
+      connectionLines.value.length = 0;
 
-              // Add click popup for the final line
-              const distance = calculateDistance(baseLat, baseLng, endLat, endLng);
-              finalLine.bindPopup(`
-                <div class="p-2">
-                  <strong style="color: ${nodeColor}">Connection to ${advert.node_name || 'Unknown Node'}</strong><br>
-                  <span class="text-sm" style="color: ${MAP_COLORS.popupText};">Distance: ${distance.toFixed(2)} km</span><br>
-                  <span class="text-sm" style="color: ${MAP_COLORS.popupText};">Route: ${formatRouteType(advert.route_type)}</span><br>
-                  <span class="text-sm" style="color: ${MAP_COLORS.popupText};">Signal: ${formatRSSI(advert.rssi)} / ${formatSNR(advert.snr)}</span>
-                </div>
-              `);
+      allClusterFeatures.forEach((feature) => {
+        const advert = feature.properties.advert;
+        if (advert.latitude === null || advert.longitude === null) {
+          return;
+        }
 
-              // Store the line for cleanup
-              connectionLines.value.push(finalLine);
-            }, 200);
-          }
-        };
-        animate();
-      }, animationDelay);
+        const color =
+          colorMap[advert.contact_type as keyof typeof colorMap] || colorMap['Unknown'];
+
+        createAnimatedConnectionLine(
+          {
+            ...advert,
+            jittered_latitude: feature.geometry.coordinates[1],
+            jittered_longitude: feature.geometry.coordinates[0],
+          },
+          lat,
+          lng,
+          color,
+          0,
+        );
+      });
     };
 
     // Render markers based on current zoom and bounds
@@ -509,13 +511,9 @@ const initializeOpenStreetMap = async () => {
       });
       clusterMarkers.value.clear();
 
-      // Clear existing connection lines
-      connectionLines.value.forEach((line) => {
-        if (map) {
-          line.remove();
-        }
-      });
-      connectionLines.value.length = 0;
+      // Keep line rendering independent from visible marker bounds so long links
+      // stay visible while zoomed into one end of the map.
+      renderConnectionLines();
 
       // Get clusters for current bounds
       const clusters = supercluster!.getClusters(
@@ -567,26 +565,6 @@ const initializeOpenStreetMap = async () => {
 
           clusterMarkers.value.set(`cluster-${props.cluster_id}`, marker);
 
-          // CREATE ANIMATED LINE TO CLUSTER
-          // Calculate distance to cluster center
-          const distance = calculateDistance(lat, lng, latitude, longitude);
-          const animationDelay = Math.min(Math.floor(distance * 5), 200);
-
-          // Create a fake advert object for cluster line creation
-          const clusterAdvert = {
-            node_name: `Cluster of ${props.point_count} nodes`,
-            contact_type: 'Cluster',
-            route_type: 2, // Use direct route style for clusters
-            rssi: null,
-            snr: null,
-            jittered_latitude: latitude,
-            jittered_longitude: longitude,
-            latitude: latitude,
-            longitude: longitude,
-          } as Advert;
-
-          // Create animated line to cluster with cluster color
-          createAnimatedConnectionLine(clusterAdvert, lat, lng, MAP_COLORS.cluster, animationDelay);
         } else {
           // This is an individual marker
           const advert = props.advert as Advert;
@@ -615,17 +593,6 @@ const initializeOpenStreetMap = async () => {
           nodeMarkers.value.set(advert.pubkey, marker);
           clusterMarkers.value.set(`node-${advert.pubkey}`, marker);
 
-          // Create animated connection line (only for individual nodes, not clusters)
-          // Use a smaller delay based on distance to create a nice wave effect
-          const animationDelay = Math.min(Math.floor(distance * 5), 200); // Reduced max delay to 200ms
-
-          // Create a custom advert object with the cluster coordinates for line creation
-          const lineAdvert = {
-            ...advert,
-            jittered_latitude: markerLat,
-            jittered_longitude: markerLng,
-          };
-          createAnimatedConnectionLine(lineAdvert, lat, lng, color, animationDelay);
         }
       });
     };
@@ -635,9 +602,7 @@ const initializeOpenStreetMap = async () => {
       let animationDelay = 0;
 
       // Apply coordinate jittering for identical positions
-      const clusterFeatures = prepareClusterData(props.adverts);
-
-      clusterFeatures.forEach((feature) => {
+      allClusterFeatures.forEach((feature) => {
         const advert = feature.properties.advert;
         if (advert.latitude !== null && advert.longitude !== null) {
           const color =
@@ -688,8 +653,7 @@ const initializeOpenStreetMap = async () => {
     // Initialize clustering with current adverts
     if (useClusteringRef.value && props.adverts.length > 0) {
       try {
-        const clusterFeatures = prepareClusterData(props.adverts);
-        initializeCluster(clusterFeatures);
+        initializeCluster(allClusterFeatures);
 
         // Set initial zoom to ensure some markers are visible individually
         const initialZoom = Math.min(14, map.getZoom()); // Start at zoom 14 or current zoom, whichever is lower
@@ -707,21 +671,23 @@ const initializeOpenStreetMap = async () => {
         }, 100);
 
         // Update markers when map moves or zooms
-        map.on('moveend', () => {
+        const refreshMapLayers = () => {
           try {
             updateMarkersAndClusters();
+            requestAnimationFrame(() => {
+              connectionLines.value.forEach((line) => {
+                line.redraw();
+                line.bringToFront();
+              });
+            });
           } catch (err) {
-            console.warn('Error updating clusters on move:', err);
+            console.warn('Error updating clusters on map change:', err);
           }
-        });
+        };
 
-        map.on('zoomend', () => {
-          try {
-            updateMarkersAndClusters();
-          } catch (err) {
-            console.warn('Error updating clusters on zoom:', err);
-          }
-        });
+        map.on('moveend', refreshMapLayers);
+        map.on('zoomend', refreshMapLayers);
+        map.on('viewreset', refreshMapLayers);
       } catch (clusterInitErr) {
         console.warn('Error initializing clustering:', clusterInitErr);
         // Fallback to original non-clustered marker creation
@@ -858,8 +824,8 @@ onUnmounted(() => {
     <div
       v-else
       ref="mapContainer"
-      class="leaflet-map-container h-96 w-full glass-card backdrop-blur border border-stroke-subtle rounded-xl overflow-hidden shadow-sm dark:shadow-none"
-      style="min-height: 384px; position: relative"
+      class="leaflet-map-container h-[50vh] min-h-[320px] sm:h-[55vh] lg:h-[60vh] w-full glass-card backdrop-blur border border-stroke-subtle rounded-xl overflow-hidden shadow-sm dark:shadow-none"
+      style="position: relative"
     />
 
     <!-- Legend Toggle Button -->
