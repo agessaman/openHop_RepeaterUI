@@ -24,6 +24,17 @@ export interface ErrorResponse {
   error?: string;
 }
 
+export interface NeighborScopeRecord {
+  /** Comma-separated region scope names from the neighbour's last answer. Empty means it answered that it serves unscoped traffic only. */
+  scopes: string;
+  /** Epoch seconds of the answer `scopes` came from */
+  responded_at?: number | null;
+  /** Outcome of the most recent query */
+  status: "responded" | "timeout" | "send_failed";
+  /** Epoch seconds of the most recent query */
+  queried_at: number;
+}
+
 export interface NeighborLinkSnapshot {
   peer_hash?: string;
   /**
@@ -3851,6 +3862,99 @@ export class Api<
       this.request<object, any>({
         path: `/broker_presets`,
         method: "GET",
+        format: "json",
+        ...params,
+      }),
+  };
+  publishNeighbors = {
+    /**
+     * @description Runs one neighbours cycle immediately: a zero-hop discovery broadcast, a serialized scope query per neighbour, then a publish to every opted-in broker. Returns as soon as the cycle is scheduled; the cycle itself takes minutes. Poll /mqtt_status for the outcome.
+     *
+     * @tags System
+     * @name PublishNeighborsCreate
+     * @summary Publish the neighbours table now
+     * @request POST:/publish_neighbors
+     * @secure
+     */
+    publishNeighborsCreate: (params: RequestParams = {}) =>
+      this.request<SuccessResponse, void>({
+        path: `/publish_neighbors`,
+        method: "POST",
+        secure: true,
+        format: "json",
+        ...params,
+      }),
+  };
+  neighborScopes = {
+    /**
+     * @description Region scopes learned from the anon-regions query the neighbours publisher issues, keyed by lowercase pubkey hex. One row per neighbour that has been queried; neighbours never queried are simply absent. `scopes` is the last answer given and an empty string is a real answer meaning the neighbour serves unscoped traffic only. `status`/`queried_at` describe the most recent query, which may have failed after a good answer, so `responded_at` is what says how fresh `scopes` is. `served` carries this node's own scopes in the same comma-separated form — the very string it sends when a neighbour asks it the same question — so a client can tell which of a neighbour's scopes it already shares.
+     *
+     * @tags Network Policy
+     * @name NeighborScopesList
+     * @summary Last known region scopes per neighbour
+     * @request GET:/neighbor_scopes
+     * @secure
+     */
+    neighborScopesList: (params: RequestParams = {}) =>
+      this.request<
+        {
+          success: boolean;
+          error?: string;
+          count?: number;
+          served?: {
+            /** This node's own advertised scopes, comma-separated, `*` first when it floods unscoped. Empty when they cannot be read. */
+            scopes: string;
+          };
+          data?: Record<string, NeighborScopeRecord>;
+        },
+        any
+      >({
+        path: `/neighbor_scopes`,
+        method: "GET",
+        secure: true,
+        format: "json",
+        ...params,
+      }),
+  };
+  queryNeighborScopes = {
+    /**
+     * @description Sends a single route-direct anon-regions request and waits for the reply, then stores and returns the outcome. Nothing is published to MQTT; the periodic cycle owns the neighbors topic. The request only reaches a zero-hop neighbour, and the responder rate-limits anonymous replies (4 per 3 minutes), so both a multi-hop target and a repeated query show up as `timeout`. Errors when a neighbours cycle already holds the scope helper.
+     *
+     * @tags Network Policy
+     * @name QueryNeighborScopesCreate
+     * @summary Query one neighbour's region scopes now
+     * @request POST:/query_neighbor_scopes
+     * @secure
+     */
+    queryNeighborScopesCreate: (
+      data: {
+        /** Full 64-character public key hex of the neighbour */
+        pubkey: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        {
+          success: boolean;
+          error?: string;
+          data?: {
+            pubkey: string;
+            status: "responded" | "timeout" | "send_failed";
+            /** Comma-separated scope names; empty when unscoped */
+            scopes: string;
+            /** Whether the request actually reached the air */
+            transmitted: boolean;
+            queried_at?: number | null;
+            responded_at?: number | null;
+          };
+        },
+        void
+      >({
+        path: `/query_neighbor_scopes`,
+        method: "POST",
+        body: data,
+        secure: true,
+        type: ContentType.Json,
         format: "json",
         ...params,
       }),

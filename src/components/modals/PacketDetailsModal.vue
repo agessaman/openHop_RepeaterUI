@@ -143,7 +143,9 @@ const refreshContactLookup = async () => {
   contactLookupLoading.value = true;
   try {
     const [contactsResponse, advertResponses] = await Promise.all([
-      ApiService.get('/companion/contacts'),
+      // A repeater with no companion bridge returns 503 here; treat it like the
+      // advert lookups below so advert-based names still resolve.
+      ApiService.get('/companion/contacts').catch(() => null),
       Promise.all(
         ADVERT_CONTACT_TYPES.map((contactType) =>
           ApiService.get('/adverts_by_contact_type', {

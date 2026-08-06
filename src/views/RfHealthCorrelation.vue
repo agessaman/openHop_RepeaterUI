@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, toRaw } from 'vue';
+import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue';
 import {
   BarController,
   BarElement,
@@ -10,6 +10,7 @@ import {
   LineController,
   LineElement,
   LinearScale,
+  LogarithmicScale,
   PointElement,
   TimeScale,
   Title,
@@ -25,6 +26,7 @@ import { streamingGet } from '@/utils/streamingFetch';
 ChartJS.register(
   CategoryScale,
   LinearScale,
+  LogarithmicScale,
   PointElement,
   LineElement,
   LineController,
@@ -131,6 +133,7 @@ const heatmapContainerWidth = ref(0);
 const showInactivePacketTypes = ref(false);
 const showAllMobileRows = ref(false);
 const selectedHeatmapDetail = ref<HeatmapDetail | null>(null);
+const hideExpectedDropReasons = ref(true);
 
 const HEATMAP_MIN_COLUMNS = 30;
 const HEATMAP_MAX_COLUMNS = 48;
@@ -149,6 +152,9 @@ const HEATMAP_RETRY_BANDS: Array<{ key: HeatmapSeverityBand; min: number; max: n
   { key: 'high', min: 15, max: 35, label: 'High (15-35%)' },
   { key: 'severe', min: 35, max: null, label: 'Severe (>=35%)' },
 ];
+
+const NOISE_HISTORY_PAGE_LIMIT = 5000;
+const NOISE_HISTORY_MAX_PAGES = 400;
 
 const packetStats = ref<PacketStatsPayload>({});
 const noisePoints = ref<TimeValuePoint[]>([]);
@@ -353,6 +359,19 @@ const normalizeDropReasons = (
   const canonicalizeDropReason = (reason: unknown): string => {
     const label = String(reason ?? 'Unknown').trim() || 'Unknown';
     const lower = label.toLowerCase();
+
+    if (lower.startsWith('duplicate')) {
+      return 'Duplicate';
+    }
+    if (lower.startsWith('direct: no path') || lower.startsWith('direct no path')) {
+      return 'Direct: no path';
+    }
+    if (lower.startsWith('direct: not for us') || lower.startsWith('direct not for us')) {
+      return 'Direct: not for us';
+    }
+    if (lower.startsWith('marked do not retransmit') || lower.includes('do not retransmit')) {
+      return 'Marked do not retransmit';
+    }
     if (lower.startsWith('max flood hops limit reached')) {
       return 'Max flood hops limit reached';
     }
@@ -384,6 +403,14 @@ const normalizeDropReasons = (
   return Array.from(aggregated.entries())
     .map(([reason, count]) => ({ reason, count }))
     .sort((a, b) => b.count - a.count);
+};
+
+const isExpectedDropReason = (reason: string): boolean => {
+  const normalized = reason.trim().toLowerCase();
+  return normalized === 'duplicate'
+    || normalized === 'direct: no path'
+    || normalized === 'direct: not for us'
+    || normalized === 'marked do not retransmit';
 };
 
 const aggregateToBuckets = (
@@ -555,10 +582,36 @@ const droppedPackets = computed(() => {
   return Math.max(0, received - transmitted);
 });
 
-const dropReasonCounts = computed(() => {
-  const reasons = normalizeDropReasons(packetStats.value.drop_reasons);
-  return reasons.slice(0, 10);
+const allDropReasonCounts = computed(() => {
+  return normalizeDropReasons(packetStats.value.drop_reasons);
 });
+
+const dropReasonCounts = computed(() => {
+  const filteredReasons = hideExpectedDropReasons.value
+    ? allDropReasonCounts.value.filter((entry) => !isExpectedDropReason(entry.reason))
+    : allDropReasonCounts.value;
+  return filteredReasons.slice(0, 10);
+});
+
+const expectedDropReasonTotal = computed(() => {
+  return allDropReasonCounts.value
+    .filter((entry) => isExpectedDropReason(entry.reason))
+    .reduce((sum, entry) => sum + entry.count, 0);
+});
+
+const expectedDropReasonTypes = computed(() => {
+  return allDropReasonCounts.value.filter((entry) => isExpectedDropReason(entry.reason)).length;
+});
+
+watch(
+  [dropReasonCounts, hideExpectedDropReasons],
+  async () => {
+    // When toggling causes the chart canvas to unmount/remount, wait for DOM update first.
+    await nextTick();
+    createOrUpdateDropReasonsChart();
+  },
+  { deep: true, flush: 'post' },
+);
 
 const dropRate = computed(() => {
   if (totalPackets.value <= 0) return 0;
@@ -1223,20 +1276,47 @@ const fetchAllData = async () => {
   lbtError.value = null;
 
   try {
+    const fetchNoiseHistoryWindow = async () => {
+      const mergedHistory: unknown[] = [];
+      let offset = 0;
+
+      for (let page = 0; page < NOISE_HISTORY_MAX_PAGES; page++) {
+        const noiseRes = await streamingGet('/noise_floor_history', {
+          hours: selectedHours.value,
+          limit: NOISE_HISTORY_PAGE_LIMIT,
+          offset,
+        }, {
+          idleTimeoutMs: 30_000,
+          onPhaseChange: (phase) => {
+            chartStatus.value = phase === 'receiving' ? 'Receiving data...' : 'Connecting...';
+          },
+        });
+
+        const payload = asRecord(noiseRes.data) ?? {};
+        const data = asRecord(payload.data) ?? payload;
+        const batch = Array.isArray(data.history) ? data.history : [];
+
+        if (batch.length === 0) break;
+        mergedHistory.push(...batch);
+
+        if (batch.length < NOISE_HISTORY_PAGE_LIMIT) break;
+
+        offset += NOISE_HISTORY_PAGE_LIMIT;
+        chartStatus.value = `Receiving data... (${mergedHistory.length.toLocaleString()} points)`;
+      }
+
+      return mergedHistory;
+    };
+
     const lbtPromise: Promise<LbtFetchResult> = ApiService.getLbtDiagnostics({
       hours: selectedHours.value,
     }).catch((error) => {
       return { success: false, error: error instanceof Error ? error.message : 'Failed to load LBT diagnostics' };
     });
 
-    const [statsRes, noiseRes, crcRes, metricsRes, lbtRes] = await Promise.all([
+    const [statsRes, noiseHistory, crcRes, metricsRes, lbtRes] = await Promise.all([
       streamingGet('/packet_stats', { hours: selectedHours.value }),
-      streamingGet('/noise_floor_history', { hours: selectedHours.value }, {
-        idleTimeoutMs: 30_000,
-        onPhaseChange: (phase) => {
-          chartStatus.value = phase === 'receiving' ? 'Receiving data...' : 'Connecting...';
-        },
-      }),
+      fetchNoiseHistoryWindow(),
       streamingGet('/crc_error_history', { hours: selectedHours.value }),
       streamingGet('/metrics_graph_data', {
         hours: selectedHours.value,
@@ -1256,7 +1336,7 @@ const fetchAllData = async () => {
       drop_reasons: (statsData.drop_reasons as PacketStatsPayload['drop_reasons']) ?? undefined,
     };
 
-    noisePoints.value = extractNoisePoints(noiseRes.data);
+    noisePoints.value = extractNoisePoints({ history: noiseHistory });
     crcPoints.value = extractCrcPoints(crcRes.data);
     packetCountPoints.value = extractPacketCountPoints(metricsRes.data);
 
@@ -1318,6 +1398,17 @@ const createOrUpdateChart = () => {
   const noiseData = alignedBuckets.value
     .filter((point) => point.noise !== null)
     .map((point) => ({ x: point.bucketMs, y: point.noise as number }));
+  const noiseValues = noiseData.map((point) => point.y);
+  const minNoise = noiseValues.length > 0 ? Math.min(...noiseValues) : null;
+  const maxNoise = noiseValues.length > 0 ? Math.max(...noiseValues) : null;
+  const noiseAxisMin =
+    minNoise === null
+      ? undefined
+      : Math.floor(minNoise) - (minNoise === maxNoise ? 1 : 0);
+  const noiseAxisMax =
+    maxNoise === null
+      ? undefined
+      : Math.ceil(maxNoise) + (minNoise === maxNoise ? 1 : 0);
 
   const crcData = alignedBuckets.value.map((point) => ({ x: point.bucketMs, y: point.crc }));
   const maxCrc = Math.max(1, ...crcData.map((point) => point.y));
@@ -1410,6 +1501,8 @@ const createOrUpdateChart = () => {
         yNoise: {
           type: 'linear' as const,
           position: 'left' as const,
+          min: noiseAxisMin,
+          max: noiseAxisMax,
           title: {
             display: true,
             text: 'Noise floor (dBm)',
@@ -1485,6 +1578,9 @@ const createOrUpdateDropReasonsChart = () => {
   const labels = dropReasonCounts.value.map((entry) => entry.reason);
   const values = dropReasonCounts.value.map((entry) => entry.count);
   const maxCount = Math.max(1, ...values);
+  const minCount = Math.max(1, Math.min(...values));
+  const spreadRatio = maxCount / minCount;
+  const useLogScale = !hideExpectedDropReasons.value && spreadRatio >= 100;
 
   const config = {
     type: 'bar' as const,
@@ -1498,6 +1594,7 @@ const createOrUpdateDropReasonsChart = () => {
           borderColor: resolveCssColor(CHART_COLORS.crc),
           borderWidth: 1,
           borderRadius: 6,
+          minBarLength: 2,
           maxBarThickness: 18,
         },
       ],
@@ -1520,8 +1617,10 @@ const createOrUpdateDropReasonsChart = () => {
       },
       scales: {
         x: {
-          beginAtZero: true,
-          suggestedMax: Math.ceil(maxCount * 1.15),
+          type: useLogScale ? ('logarithmic' as const) : ('linear' as const),
+          beginAtZero: !useLogScale,
+          min: useLogScale ? 1 : 0,
+          suggestedMax: useLogScale ? undefined : Math.ceil(maxCount * 1.15),
           grid: {
             color: resolveCssColor(CHART_COLORS.grid),
           },
@@ -1939,15 +2038,39 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="glass-card rounded-[15px] p-3 sm:p-5">
-      <h3 class="text-content-primary text-lg sm:text-xl font-semibold mb-1">Drop reasons</h3>
-      <p class="text-xs sm:text-sm text-content-secondary mb-3">
-        Top causes for dropped packets in the selected window.
-      </p>
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-3">
+        <div>
+          <h3 class="text-content-primary text-lg sm:text-xl font-semibold mb-1">Drop reasons</h3>
+          <p class="text-xs sm:text-sm text-content-secondary">
+            Top causes for dropped packets in the selected window.
+          </p>
+          <p
+            v-if="hideExpectedDropReasons && expectedDropReasonTotal > 0"
+            class="text-xs text-content-muted mt-1"
+          >
+            Hidden expected drops: {{ expectedDropReasonTotal.toLocaleString() }} across {{ expectedDropReasonTypes }} type{{ expectedDropReasonTypes === 1 ? '' : 's' }}.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          :aria-pressed="hideExpectedDropReasons"
+          class="inline-flex shrink-0 self-start sm:self-auto items-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs sm:text-sm select-none transition-colors border"
+          :class="hideExpectedDropReasons
+            ? 'bg-primary/opacity-medium border-primary/opacity-heavy text-primary'
+            : 'bg-background-mute dark:bg-white/opacity-subtle border-stroke-subtle dark:border-stroke/opacity-medium text-content-secondary'"
+          @click="hideExpectedDropReasons = !hideExpectedDropReasons"
+        >
+          <span class="leading-none font-medium">
+            {{ hideExpectedDropReasons ? 'Hiding expected drops' : 'Showing expected drops' }}
+          </span>
+        </button>
+      </div>
       <div
         v-if="dropReasonCounts.length === 0"
         class="text-sm text-content-secondary border border-stroke-subtle rounded-lg p-4"
       >
-        No drop reasons were recorded in this time range.
+        {{ hideExpectedDropReasons ? 'No non-expected drop reasons were recorded in this time range.' : 'No drop reasons were recorded in this time range.' }}
       </div>
       <ChartCard
         v-else

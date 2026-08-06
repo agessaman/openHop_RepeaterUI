@@ -13,6 +13,8 @@ const generatedApiClientMock = {
   dbVacuum: { dbVacuumCreate: vi.fn() },
   configExport: { configExportList: vi.fn() },
   createIdentity: { createIdentityCreate: vi.fn() },
+  neighborScopes: { neighborScopesList: vi.fn() },
+  queryNeighborScopes: { queryNeighborScopesCreate: vi.fn() },
 } as const;
 
 vi.mock('@/services/api/generatedClient', () => ({
@@ -61,6 +63,56 @@ describe('ApiService contract regressions', () => {
       {},
     );
     expect(result.data?.target_id).toBe('0x42');
+  });
+
+  it('getNeighborScopes returns the pubkey-keyed record map', async () => {
+    const pubkey = 'aa'.repeat(32);
+    generatedApiClientMock.neighborScopes.neighborScopesList.mockResolvedValue({
+      data: {
+        success: true,
+        count: 1,
+        data: {
+          [pubkey]: {
+            scopes: 'DEN,BOU',
+            status: 'responded',
+            queried_at: 1785372000,
+            responded_at: 1785372000,
+          },
+        },
+      },
+    });
+
+    const { default: ApiService } = await import('@/utils/api');
+    const result = await ApiService.getNeighborScopes();
+
+    expect(generatedApiClientMock.neighborScopes.neighborScopesList).toHaveBeenCalledWith({});
+    expect(result.data?.[pubkey].scopes).toBe('DEN,BOU');
+  });
+
+  it('queryNeighborScopes sends the pubkey and returns the query outcome', async () => {
+    const pubkey = 'bb'.repeat(32);
+    generatedApiClientMock.queryNeighborScopes.queryNeighborScopesCreate.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          pubkey,
+          status: 'responded',
+          scopes: 'DEN',
+          transmitted: true,
+          queried_at: 1785372000,
+          responded_at: 1785372000,
+        },
+      },
+    });
+
+    const { default: ApiService } = await import('@/utils/api');
+    const result = await ApiService.queryNeighborScopes(pubkey);
+
+    expect(
+      generatedApiClientMock.queryNeighborScopes.queryNeighborScopesCreate,
+    ).toHaveBeenCalledWith({ pubkey }, {});
+    expect(result.data?.scopes).toBe('DEN');
+    expect(result.data?.transmitted).toBe(true);
   });
 
   it('getLogs returns typed logs list directly from generated client', async () => {

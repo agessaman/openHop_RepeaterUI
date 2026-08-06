@@ -526,10 +526,10 @@ onBeforeUnmount(() => {
     <div class="glass-card backdrop-blur border border-stroke-subtle dark:border-white/opacity-light rounded-[15px] p-6 space-y-5">
       <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 class="text-content-primary text-2xl font-semibold mb-2">
+          <h1 class="text-content-primary text-ui-title sm:text-ui-title-lg font-semibold mb-1 sm:mb-2">
             System Logs
           </h1>
-          <p class="text-content-secondary dark:text-content-muted max-w-2xl">
+          <p class="text-content-secondary dark:text-content-muted text-ui-label sm:text-ui-body max-w-2xl">
             Live tail for repeater logs with pause, follow, search, and logger-level filtering.
           </p>
         </div>

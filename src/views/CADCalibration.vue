@@ -849,10 +849,10 @@ onMounted(() => {
 <template>
   <div class="h-[calc(100vh-5rem)] overflow-hidden p-4 flex flex-col gap-4">
     <div class="shrink-0">
-      <h1 class="text-2xl font-bold text-content-primary">
+      <h1 class="text-ui-title sm:text-ui-title-lg font-bold text-content-primary">
         CAD Calibration Tool
       </h1>
-      <p class="text-content-secondary dark:text-content-muted mt-2">
+      <p class="text-content-secondary dark:text-content-muted mt-1 sm:mt-2 text-ui-label sm:text-ui-body">
         Default-anchored calibration with real-time process feedback
       </p>
     </div>

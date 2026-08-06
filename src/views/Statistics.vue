@@ -954,13 +954,13 @@ onBeforeUnmount(() => {
   <div class="p-3 sm:p-6 space-y-4 sm:space-y-6">
     <!-- Header with Time Range Dropdown -->
     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-      <h2 class="text-xl sm:text-2xl font-bold text-content-primary">
+      <h1 class="text-ui-title sm:text-ui-title-lg font-bold text-content-primary">
         Statistics
-      </h2>
+      </h1>
 
       <!-- Time Range Selector -->
       <div class="flex items-center gap-2 sm:gap-3">
-        <label class="text-content-secondary dark:text-content-muted text-xs sm:text-sm"
+        <label class="text-content-secondary dark:text-content-muted text-ui-caption sm:text-ui-label"
           >Time Range:</label
         >
         <select
@@ -1023,7 +1023,7 @@ onBeforeUnmount(() => {
     <!-- Performance Metrics Section -->
     <div class="glass-card rounded-[15px] p-3 sm:p-6">
       <h3
-        class="text-content-primary text-lg sm:text-xl font-semibold mb-3 sm:mb-4"
+        class="text-content-primary text-ui-section sm:text-ui-title font-semibold mb-3 sm:mb-4"
       >
         Performance Metrics
       </h3>
@@ -1031,18 +1031,18 @@ onBeforeUnmount(() => {
       <!-- Packet Rate Chart -->
       <div>
         <p
-          class="text-content-secondary dark:text-content-muted text-xs sm:text-sm uppercase tracking-wide mb-2"
+          class="text-content-secondary dark:text-content-muted text-ui-caption sm:text-ui-label uppercase tracking-wide mb-2"
         >
           Packet Rate (RX/TX PER HOUR)
         </p>
         <div class="flex items-center gap-3 sm:gap-6 mb-3 sm:mb-4">
           <div class="flex items-center gap-2">
             <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: CHART_COLORS.rx }"></div>
-            <span class="text-content-secondary dark:text-content-muted text-sm">RX/hr</span>
+            <span class="text-content-secondary dark:text-content-muted text-ui-label">RX/hr</span>
           </div>
           <div class="flex items-center gap-2">
             <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: CHART_COLORS.tx }"></div>
-            <span class="text-content-secondary dark:text-content-muted text-sm">TX/hr</span>
+            <span class="text-content-secondary dark:text-content-muted text-ui-label">TX/hr</span>
           </div>
         </div>
         <ChartCard
@@ -1062,7 +1062,7 @@ onBeforeUnmount(() => {
       <!-- Noise Floor Over Time -->
       <div class="glass-card rounded-[15px] p-3 sm:p-6 flex flex-col">
         <h3
-          class="text-content-primary text-lg sm:text-xl font-semibold mb-3 sm:mb-4"
+          class="text-content-primary text-ui-section sm:text-ui-title font-semibold mb-3 sm:mb-4"
         >
           Noise Floor Over Time
         </h3>
@@ -1080,7 +1080,7 @@ onBeforeUnmount(() => {
       <!-- Route Distribution -->
       <div class="glass-card rounded-[15px] p-3 sm:p-6 flex flex-col">
         <h3
-          class="text-content-primary text-lg sm:text-xl font-semibold mb-3 sm:mb-4"
+          class="text-content-primary text-ui-section sm:text-ui-title font-semibold mb-3 sm:mb-4"
         >
           Route Distribution
         </h3>

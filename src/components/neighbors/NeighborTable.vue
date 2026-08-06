@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { Tag } from '@lucide/vue';
 import NeighborMenu from '@/components/ui/NeighborMenu.vue';
+import { describeScopes } from '@/utils/neighborScopes';
+import type { ScopeDisplay } from '@/utils/neighborScopes';
+import type { NeighborScopeRecord } from '@/generated/openapi';
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard';
 import { useSignalQuality } from '@/composables/useSignalQuality';
 import SignalBars from '@/components/ui/SignalBars.vue';
@@ -54,6 +58,10 @@ interface Props {
   isCompactView?: boolean;
   isFirstTable?: boolean;
   showViewToggle?: boolean;
+  /** Region scopes keyed by lowercase pubkey hex; absent key = never queried. */
+  scopes?: Record<string, NeighborScopeRecord>;
+  /** Only the repeater table shows scopes — nothing else answers the query. */
+  showScopes?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -63,6 +71,8 @@ const props = withDefaults(defineProps<Props>(), {
   isCompactView: false,
   isFirstTable: false,
   showViewToggle: false,
+  scopes: () => ({}),
+  showScopes: false,
 });
 
 // Emits
@@ -72,8 +82,34 @@ const emit = defineEmits<{
   'menu-ping': [neighbor: unknown];
   'menu-delete': [neighbor: unknown];
   'show-details': [neighbor: unknown];
+  'show-scopes': [neighbor: unknown];
+  'query-scopes': [neighbor: unknown];
   'toggle-view': [];
 }>();
+
+// Derived once per render pass rather than per cell: the template reads the state,
+// its label and its tooltip separately, and a table can carry hundreds of rows.
+const scopeDisplays = computed(() => {
+  const byId: Record<number, ScopeDisplay> = {};
+  if (!props.showScopes) return byId;
+  for (const advert of props.adverts) {
+    byId[advert.id] = describeScopes(props.scopes[advert.pubkey.toLowerCase()]);
+  }
+  return byId;
+});
+
+const scopeDisplay = (advert: Advert): ScopeDisplay =>
+  scopeDisplays.value[advert.id] ?? describeScopes(null);
+
+// Muted for a state that carries no scope names, and amber once a query has
+// failed — including when older names are still being shown, so a stale answer
+// does not read as a fresh one.
+const scopeToneClass = (advert: Advert) => {
+  const display = scopeDisplay(advert);
+  if (display.state === 'unknown') return 'text-content-muted';
+  if (display.state === 'failed' || display.stale) return 'text-accent-amber';
+  return 'text-primary';
+};
 
 
 const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
@@ -202,6 +238,14 @@ const handleMenuShowDetails = (neighbor: unknown) => {
 
 const handleMenuDelete = (neighbor: unknown) => {
   emit('menu-delete', neighbor);
+};
+
+const handleShowScopes = (neighbor: unknown) => {
+  emit('show-scopes', neighbor);
+};
+
+const handleQueryScopes = (neighbor: unknown) => {
+  emit('query-scopes', neighbor);
 };
 
 // Sorting functionality
@@ -553,6 +597,13 @@ const sortedAdverts = computed(() => {
                 </svg>
               </div>
             </th>
+            <th
+              v-if="showScopes"
+              :class="`text-left text-content-secondary dark:text-content-muted text-xs font-medium py-3 ${getCellPadding().split(' ')[1]} border-b border-stroke-subtle dark:border-white/opacity-light`"
+              title="Region scopes this repeater serves, from the last scope query"
+            >
+              Scopes
+            </th>
           </tr>
         </thead>
 
@@ -568,9 +619,11 @@ const sortedAdverts = computed(() => {
             <td :class="getCellPadding()" @click.stop>
               <NeighborMenu
                 :neighbor="advert"
+                :can-query-scopes="showScopes"
                 @ping="handleMenuPing"
                 @show-details="handleMenuShowDetails"
                 @delete="handleMenuDelete"
+                @query-scopes="handleQueryScopes"
               />
             </td>
             <td
@@ -753,6 +806,25 @@ const sortedAdverts = computed(() => {
             >
               {{ advert.advert_count }}
             </td>
+            <td v-if="showScopes" :class="getCellPadding()" @click.stop>
+              <button
+                @click="handleShowScopes(advert)"
+                :class="[
+                  'inline-flex items-center gap-1 text-sm rounded px-1 py-0.5 hover:bg-primary/opacity-light transition-colors',
+                  scopeToneClass(advert),
+                ]"
+                :title="scopeDisplay(advert).title"
+              >
+                <Tag
+                  v-if="scopeDisplay(advert).state === 'scoped'"
+                  class="w-4 h-4"
+                  :stroke-width="2"
+                />
+                <span :class="scopeDisplay(advert).state === 'scoped' ? 'font-medium' : ''">
+                  {{ scopeDisplay(advert).label }}
+                </span>
+              </button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -797,9 +869,11 @@ const sortedAdverts = computed(() => {
           </div>
           <NeighborMenu
             :neighbor="advert"
+            :can-query-scopes="showScopes"
             @ping="handleMenuPing"
             @show-details="handleMenuShowDetails"
             @delete="handleMenuDelete"
+            @query-scopes="handleQueryScopes"
           />
         </div>
 
@@ -942,6 +1016,26 @@ const sortedAdverts = computed(() => {
                 </button>
               </div>
             </div>
+          </div>
+
+          <!-- Scopes (repeaters only) -->
+          <div v-if="showScopes" class="border-t border-stroke-subtle pt-3">
+            <div class="text-content-muted text-xs mb-1">Scopes</div>
+            <button
+              @click.stop="handleShowScopes(advert)"
+              :class="[
+                'inline-flex items-center gap-2 text-sm text-left',
+                scopeToneClass(advert),
+              ]"
+              :title="scopeDisplay(advert).title"
+            >
+              <Tag
+                v-if="scopeDisplay(advert).state === 'scoped'"
+                class="w-4 h-4 flex-shrink-0"
+                :stroke-width="2"
+              />
+              <span>{{ scopeDisplay(advert).summary }}</span>
+            </button>
           </div>
 
           <!-- Additional Stats -->
