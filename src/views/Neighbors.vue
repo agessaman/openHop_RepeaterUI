@@ -39,7 +39,7 @@ const loading = computed(() => neighborStore.isLoading);
 const error = ref<string | null>(null);
 
 // Hours dropdown
-const selectedHours = ref(neighborStore.currentHours);
+const selectedHours = ref(getPreference('neighbors_selectedHours', neighborStore.currentHours));
 const hoursOptions = [
   { label: '2 Days', value: 48 },
   { label: '7 Days', value: 168 },
@@ -48,8 +48,14 @@ const hoursOptions = [
 ];
 const changeHours = async (hours: number) => {
   selectedHours.value = hours;
+  neighborStore.currentHours = hours;
+  setPreference('neighbors_selectedHours', hours);
   await neighborStore.fetchAll(hours);
 };
+watch(selectedHours, (value) => {
+  neighborStore.currentHours = value;
+  setPreference('neighbors_selectedHours', value);
+});
 const isCompactView = ref(getPreference('neighbors_compactView', false));
 // Default legend to closed on mobile, open on desktop
 const showMapLegend = ref(
@@ -639,6 +645,9 @@ const confirmDelete = async (neighborId: number) => {
 
 // Lifecycle — DataService bootstrap handles stats; ensure neighbors and radio config are fresh
 onMounted(() => {
+  const preferredHours = getPreference('neighbors_selectedHours', neighborStore.currentHours);
+  selectedHours.value = preferredHours;
+  neighborStore.currentHours = preferredHours;
   void dataService.ensure('neighbors');
   void dataService.ensure('radioConfig');
 });
