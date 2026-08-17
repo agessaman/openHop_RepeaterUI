@@ -1019,6 +1019,8 @@ export class ApiService {
                 node_name?: string;
                 latitude?: number;
                 longitude?: number;
+                flood_advert_interval_hours?: number;
+                direct_advert_interval_hours?: number;
               }
             | undefined,
         },

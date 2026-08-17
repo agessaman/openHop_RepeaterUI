@@ -33,6 +33,8 @@ export interface RecentPacket {
   drop_reason?: string;
   score: number;
   tx_delay_ms: number;
+  rx_radio_id?: string;
+  tx_radio_id?: string;
   lbt_attempts?: number;
   lbt_backoff_delays_ms?: string;
   lbt_channel_busy?: boolean;
@@ -184,11 +186,25 @@ export interface SystemStats {
   config?: {
     node_name?: string;
     radio_type?: string;
+    radios?: Array<Record<string, unknown>>;
+    fabric?: {
+      default_radio?: string;
+      default_radio_id?: string;
+      tx_mode?: string;
+      use_fabric?: boolean;
+    };
+    radio_stack?: Record<string, unknown>;
+    sx1262?: Record<string, unknown>;
+    ch341?: Record<string, unknown>;
+    kiss?: Record<string, unknown>;
+    pymc_usb?: Record<string, unknown>;
+    pymc_tcp?: Record<string, unknown>;
     repeater?: {
       mode?: 'forward' | 'monitor' | 'no_tx';
       use_score_for_tx?: boolean;
       score_threshold?: number;
       send_advert_interval_hours?: number;
+      direct_advert_interval_hours?: number;
       latitude?: number;
       longitude?: number;
       advert_rate_limit?: {

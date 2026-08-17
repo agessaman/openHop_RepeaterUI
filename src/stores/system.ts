@@ -271,12 +271,12 @@ export const useSystemStore = defineStore('system', () => {
     }
   }
 
-  async function sendAdvert() {
+  async function sendAdvert(mode: 'flood' | 'direct' = 'flood') {
     try {
       // Use a longer timeout for advert sending as it may take longer to broadcast
       const response = await ApiService.post<string>(
         '/send_advert',
-        {},
+        { mode },
         {
           timeout: 10000, // 10 seconds instead of default 5
         },

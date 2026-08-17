@@ -225,16 +225,20 @@ const filteredPacketGroups = computed<PacketGroup[]>(() => {
   });
 
   return orderedGroups.map((group) => {
-    const masterPrimaryIndex = group.packets.findIndex((packet) => !packet.is_duplicate);
-    const preferredPrimaryIndex =
-      masterPrimaryIndex >= 0
-        ? masterPrimaryIndex
-        : group.packets.findIndex((packet) => packet.transmitted && !packet.drop_reason);
-    const fallbackPrimaryIndex =
-      preferredPrimaryIndex >= 0
-        ? preferredPrimaryIndex
+    // For grouped hash variants, show the copy that actually forwarded first.
+    // This keeps RX/TX radio ids aligned with what operators see in TX logs.
+    const forwardedIndex = group.packets.findIndex(
+      (packet) => packet.transmitted && !packet.drop_reason,
+    );
+    const transmittedIndex =
+      forwardedIndex >= 0
+        ? forwardedIndex
         : group.packets.findIndex((packet) => packet.transmitted);
-    const primaryIndex = fallbackPrimaryIndex >= 0 ? fallbackPrimaryIndex : 0;
+    const nonDuplicateIndex =
+      transmittedIndex >= 0
+        ? transmittedIndex
+        : group.packets.findIndex((packet) => !packet.is_duplicate);
+    const primaryIndex = nonDuplicateIndex >= 0 ? nonDuplicateIndex : 0;
     const primary = group.packets[primaryIndex];
     const duplicates = group.packets.filter((_, index) => index !== primaryIndex);
     return {
@@ -527,6 +531,12 @@ const formatDelay = (delayMs: number): string => {
     return (delayMs / 1000).toFixed(2) + 's';
   }
   return delayMs.toFixed(1) + 'ms';
+};
+
+const formatRadioId = (value?: string | null): string => {
+  if (typeof value !== 'string') return 'N/A';
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : 'N/A';
 };
 
 // Parse JSON path string into array
@@ -893,10 +903,11 @@ onBeforeUnmount(() => {
                   }}</span>
                   <span
                     v-if="packet.type === 4 && getAdvertNodeName(packet)"
-                    class="text-accent-red/opacity-heavy text-[10px] font-medium max-w-[80px] truncate"
+                    class="inline-flex items-start gap-1 px-2 py-1 rounded-md bg-accent-red/opacity-light text-content-primary dark:text-content-primary border border-accent-red/opacity-heavy text-[10px] font-semibold whitespace-normal break-words leading-tight"
                     :title="getAdvertNodeName(packet) || undefined"
                   >
-                    {{ getAdvertNodeName(packet) }}
+                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-accent-red mt-1 shrink-0"></span>
+                    <span class="whitespace-normal break-words">{{ getAdvertNodeName(packet) }}</span>
                   </span>
                 </div>
               </div>
@@ -995,6 +1006,11 @@ onBeforeUnmount(() => {
                   >
                     Duplicate #{{ getPacketMeta(packet)?.duplicateIndex }}
                   </div>
+                  <p class="mt-1 text-[10px] text-content-secondary dark:text-content-muted font-mono">
+                    RX {{ formatRadioId(packet.rx_radio_id) }}
+                    <span class="mx-1">•</span>
+                    TX {{ packet.transmitted ? formatRadioId(packet.tx_radio_id) : '-' }}
+                  </p>
                   <p v-if="packet.drop_reason" class="text-accent-red text-[8px] italic truncate">
                     {{ packet.drop_reason }}
                   </p>
@@ -1101,10 +1117,11 @@ onBeforeUnmount(() => {
                     </span>
                     <span
                       v-if="packet.type === 4 && getAdvertNodeName(packet)"
-                      class="block text-accent-red/opacity-heavy text-[10px] font-medium leading-tight mt-0.5"
+                      class="inline-flex items-start gap-1 px-2 py-1 rounded-md bg-accent-red/opacity-light text-content-primary dark:text-content-primary border border-accent-red/opacity-heavy text-[10px] font-semibold whitespace-normal break-words leading-tight mt-1"
                       :title="getAdvertNodeName(packet) || undefined"
                     >
-                      {{ getAdvertNodeName(packet) }}
+                      <span class="inline-block w-1.5 h-1.5 rounded-full bg-accent-red mt-1 shrink-0"></span>
+                      <span class="whitespace-normal break-words">{{ getAdvertNodeName(packet) }}</span>
                     </span>
                   </div>
                 </div>
@@ -1291,6 +1308,11 @@ onBeforeUnmount(() => {
               </div>
 
               <!-- Drop reason (if any) -->
+              <div class="text-content-secondary dark:text-content-muted text-xs font-mono">
+                RX {{ formatRadioId(packet.rx_radio_id) }}
+                <span class="mx-1">•</span>
+                TX {{ packet.transmitted ? formatRadioId(packet.tx_radio_id) : '-' }}
+              </div>
               <div v-if="packet.drop_reason" class="text-accent-red text-xs italic">
                 {{ packet.drop_reason }}
               </div>
