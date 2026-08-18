@@ -205,6 +205,7 @@ export interface SystemStats {
       score_threshold?: number;
       send_advert_interval_hours?: number;
       direct_advert_interval_hours?: number;
+      advert_interval_minutes?: number;
       latitude?: number;
       longitude?: number;
       advert_rate_limit?: {
