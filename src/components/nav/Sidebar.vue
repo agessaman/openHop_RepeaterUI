@@ -74,16 +74,18 @@ const changingMode = ref(false);
 const showAdvertModal = ref(false);
 const advertSuccess = ref(false);
 const advertError = ref<string | null>(null);
+const advertMode = ref<'flood' | 'direct'>('flood');
 
 provide(NAV_ACTION_HANDLERS_KEY, {
   sendAdvert: () => { showAdvertModal.value = true },
 });
 
-const handleAdvertModalSend = async () => {
+const handleAdvertModalSend = async (mode: 'flood' | 'direct') => {
   sendingAdvert.value = true;
   advertError.value = null;
+  advertMode.value = mode;
   try {
-    await systemStore.sendAdvert();
+    await systemStore.sendAdvert(mode);
     advertSuccess.value = true;
     setTimeout(() => closeAdvertModal(), 2000);
   } catch (error) {
@@ -521,6 +523,7 @@ const currentTime = computed(() => {
     :isLoading="sendingAdvert"
     :isSuccess="advertSuccess"
     :error="advertError"
+    :mode="advertMode"
     @close="closeAdvertModal"
     @send="handleAdvertModalSend"
   />

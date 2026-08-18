@@ -78,6 +78,8 @@ const newIdentity = ref({
     node_name: '',
     latitude: 0,
     longitude: 0,
+    flood_advert_interval_hours: 0,
+    direct_advert_interval_hours: 0,
     admin_password: '',
     guest_password: '',
     allow_read_only: true,
@@ -211,6 +213,12 @@ function openEditModal(identity: unknown) {
     editingIdentity.value.settings.allow_read_only = true;
   if (editingIdentity.value.settings.latitude == null) editingIdentity.value.settings.latitude = 0;
   if (editingIdentity.value.settings.longitude == null) editingIdentity.value.settings.longitude = 0;
+  if (editingIdentity.value.settings.flood_advert_interval_hours == null) {
+    editingIdentity.value.settings.flood_advert_interval_hours = 0;
+  }
+  if (editingIdentity.value.settings.direct_advert_interval_hours == null) {
+    editingIdentity.value.settings.direct_advert_interval_hours = 0;
+  }
   showKeyInEdit.value = false;
   showEditModal.value = true;
 }
@@ -224,6 +232,8 @@ function resetForm() {
       node_name: '',
       latitude: repeaterLat.value,
       longitude: repeaterLng.value,
+      flood_advert_interval_hours: 0,
+      direct_advert_interval_hours: 0,
       admin_password: '',
       guest_password: '',
       allow_read_only: true,
@@ -690,6 +700,13 @@ async function removeClient(publicKey: string, identityHash?: string) {
                     {{ identity.settings?.latitude || 0 }}, {{ identity.settings?.longitude || 0 }}
                   </span>
                 </div>
+                <div>
+                  <span class="text-content-muted">Advert Intervals:</span>
+                  <span class="text-content-primary/opacity-heavy ml-2">
+                    Flood {{ identity.settings?.flood_advert_interval_hours ?? 0 }}h /
+                    Direct {{ identity.settings?.direct_advert_interval_hours ?? 0 }}h
+                  </span>
+                </div>
                 <div v-if="identity.settings?.admin_password || identity.settings?.guest_password">
                   <span class="text-content-muted">Password Roles:</span>
                   <span class="text-content-primary/opacity-heavy ml-2">
@@ -961,6 +978,31 @@ async function removeClient(publicKey: string, identityHash?: string) {
           <!-- Passwords -->
           <div class="grid grid-cols-2 gap-5">
             <div>
+              <label class="modal-field-label">Flood Advert Interval (hours)</label>
+              <input
+                v-model.number="newIdentity.settings.flood_advert_interval_hours"
+                type="number"
+                min="0"
+                max="168"
+                class="modal-input"
+              />
+              <p class="text-content-secondary dark:text-content-muted text-xs mt-1">0 = disabled, 1-168 hours</p>
+            </div>
+            <div>
+              <label class="modal-field-label">Direct Advert Interval (hours)</label>
+              <input
+                v-model.number="newIdentity.settings.direct_advert_interval_hours"
+                type="number"
+                min="0"
+                max="168"
+                class="modal-input"
+              />
+              <p class="text-content-secondary dark:text-content-muted text-xs mt-1">0 = disabled, 1-168 hours</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-5">
+            <div>
               <label class="modal-field-label">Admin Password (Optional)</label>
               <input
                 v-model="newIdentity.settings.admin_password"
@@ -1147,6 +1189,31 @@ async function removeClient(publicKey: string, identityHash?: string) {
           </div>
 
           <!-- Passwords -->
+          <div class="grid grid-cols-2 gap-5">
+            <div>
+              <label class="modal-field-label">Flood Advert Interval (hours)</label>
+              <input
+                v-model.number="editingIdentity.settings.flood_advert_interval_hours"
+                type="number"
+                min="0"
+                max="168"
+                class="modal-input"
+              />
+              <p class="text-content-secondary dark:text-content-muted text-xs mt-1">0 = disabled, 1-168 hours</p>
+            </div>
+            <div>
+              <label class="modal-field-label">Direct Advert Interval (hours)</label>
+              <input
+                v-model.number="editingIdentity.settings.direct_advert_interval_hours"
+                type="number"
+                min="0"
+                max="168"
+                class="modal-input"
+              />
+              <p class="text-content-secondary dark:text-content-muted text-xs mt-1">0 = disabled, 1-168 hours</p>
+            </div>
+          </div>
+
           <div class="grid grid-cols-2 gap-5">
             <div>
               <label class="modal-field-label">Admin Password (Optional)</label>

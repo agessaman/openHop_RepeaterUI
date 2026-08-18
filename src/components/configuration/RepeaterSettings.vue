@@ -26,6 +26,7 @@ const nodeNameInput = ref('');
 const latitudeInput = ref(0);
 const longitudeInput = ref(0);
 const advertIntervalInput = ref(0);
+const directAdvertIntervalInput = ref(0);
 const pathHashModeInput = ref(1); // 1, 2, or 3 bytes (UI); backend uses 0, 1, 2
 
 // Mesh config: path_hash_mode 0=1-byte, 1=2-byte, 2=3-byte
@@ -39,6 +40,7 @@ watch(
       latitudeInput.value = repeaterConfig.value.latitude || 0;
       longitudeInput.value = repeaterConfig.value.longitude || 0;
       advertIntervalInput.value = repeaterConfig.value.send_advert_interval_hours || 0;
+      directAdvertIntervalInput.value = repeaterConfig.value.direct_advert_interval_hours || 0;
       const phm = meshConfig.value.path_hash_mode;
       pathHashModeInput.value = phm === 0 || phm === 1 || phm === 2 ? phm + 1 : 1;
     }
@@ -84,6 +86,13 @@ const advertInterval = computed(() => {
   return interval + ' hour' + (interval !== 1 ? 's' : '');
 });
 
+const directAdvertInterval = computed(() => {
+  const interval = repeaterConfig.value.direct_advert_interval_hours;
+  if (interval === undefined) return 'Not set';
+  if (interval === 0) return 'Disabled';
+  return interval + ' hour' + (interval !== 1 ? 's' : '');
+});
+
 const pathHashModeDisplay = computed(() => {
   const phm = meshConfig.value.path_hash_mode;
   if (phm === 0 || phm === 1 || phm === 2) return phm + 1 + (phm === 0 ? ' byte' : ' bytes');
@@ -104,6 +113,7 @@ const cancelEditing = () => {
   latitudeInput.value = repeaterConfig.value.latitude || 0;
   longitudeInput.value = repeaterConfig.value.longitude || 0;
   advertIntervalInput.value = repeaterConfig.value.send_advert_interval_hours || 0;
+  directAdvertIntervalInput.value = repeaterConfig.value.direct_advert_interval_hours || 0;
   const phm = meshConfig.value.path_hash_mode;
   pathHashModeInput.value = phm === 0 || phm === 1 || phm === 2 ? phm + 1 : 1;
 };
@@ -120,6 +130,7 @@ const saveChanges = async () => {
     payload.latitude = latitudeInput.value;
     payload.longitude = longitudeInput.value;
     payload.flood_advert_interval_hours = advertIntervalInput.value;
+    payload.direct_advert_interval_hours = directAdvertIntervalInput.value;
     payload.path_hash_mode = pathHashModeInput.value - 1; // 1/2/3 bytes -> 0/1/2
 
     const response = await apiClient.post('/update_radio_config', payload);
@@ -457,6 +468,34 @@ defineExpose({ requestLeave, isEditing });
         </div>
         <span class="text-content-muted text-xs"
           >How often the repeater sends an advertisement packet (0 = disabled, 3-168 hours)</span
+        >
+      </div>
+
+      <!-- Direct Advertisement Interval -->
+      <div class="flex flex-col py-2 gap-2 border-t border-stroke-subtle dark:border-stroke/opacity-light">
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
+          <span class="text-content-secondary dark:text-content-muted text-xs sm:text-sm"
+            >Additional Direct Advert Interval</span
+          >
+          <div
+            v-if="!isEditing"
+            class="text-content-primary font-mono text-sm sm:ml-4"
+          >
+            {{ directAdvertInterval }}
+          </div>
+          <div v-else class="flex items-center gap-2">
+            <input
+              v-model.number="directAdvertIntervalInput"
+              type="number"
+              min="0"
+              max="168"
+              class="cfg-input w-20"
+            />
+            <span class="text-content-muted text-sm">hours</span>
+          </div>
+        </div>
+        <span class="text-content-muted text-xs"
+          >Second advert cadence for repeater-originated adverts (0 = disabled, 1-168 hours)</span
         >
       </div>
     </div>
