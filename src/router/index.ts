@@ -96,6 +96,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/packet-archive',
+      name: 'packet-archive',
+      component: () => import('@/views/PacketArchive.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/logs',
       name: 'logs',
       component: () => import('@/views/Logs.vue'),
