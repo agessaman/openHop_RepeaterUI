@@ -7,8 +7,12 @@ import RestartModal from '@/components/modals/RestartModal.vue';
 import UnsavedChangesModal from '@/components/ui/UnsavedChangesModal.vue';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { useMultiRadioConfig } from '@/composables/useMultiRadioConfig';
+import {
+  normalizeModemHardwareOptions,
+  normalizeModemTransportConfig,
+} from '@/utils/modemTransport';
 
-type SupportedRadioType = 'sx1262' | 'sx1262_ch341' | 'kiss' | 'pymc_tcp' | 'pymc_usb' | 'none';
+type SupportedRadioType = 'sx1262' | 'sx1262_ch341' | 'kiss' | 'modem_tcp' | 'modem_usb' | 'none';
 
 interface RadioTypeOption {
   value: SupportedRadioType;
@@ -56,14 +60,14 @@ const radioTypeOptions: RadioTypeOption[] = [
     detail: 'KISS-modem over serial',
   },
   {
-    value: 'pymc_tcp',
-    label: 'pymc_tcp',
-    detail: 'pymc_tcp firmware modem over Wi-Fi/TCP',
+    value: 'modem_tcp',
+    label: 'openHop Modem (Wi-Fi / Ethernet)',
+    detail: 'Network connection to an openHop Modem',
   },
   {
-    value: 'pymc_usb',
-    label: 'pymc_usb',
-    detail: 'pymc_usb firmware modem over USB-CDC',
+    value: 'modem_usb',
+    label: 'openHop Modem (USB-CDC)',
+    detail: 'USB-CDC connection to an openHop Modem',
   },
   {
     value: 'none',
@@ -78,7 +82,7 @@ const config = computed<Record<string, any>>(() => {
   const nested = (stats.config as Record<string, any> | undefined) ?? {};
   // Some runtime builds expose config sections at top-level while others nest
   // under stats.config. Merge both so radio_type and section objects resolve.
-  return { ...stats, ...nested };
+  return normalizeModemTransportConfig({ ...stats, ...nested });
 });
 
 const isEditing = ref(false);
@@ -125,12 +129,12 @@ const bandwidthOptions = [
 const kissPort = ref('');
 const kissBaudRate = ref(9600);
 
-const pymcUsbPort = ref('');
-const pymcUsbBaudRate = ref(921600);
+const modemUsbPort = ref('');
+const modemUsbBaudRate = ref(921600);
 
-const pymcTcpHost = ref('');
-const pymcTcpPort = ref(5055);
-const pymcTcpToken = ref('');
+const modemTcpHost = ref('');
+const modemTcpPort = ref(5055);
+const modemTcpToken = ref('');
 
 const sxBusId = ref(0);
 const sxCsId = ref(0);
@@ -283,8 +287,8 @@ function normalizeRadioType(value: unknown): SupportedRadioType {
   if (normalized === 'sx1262') return 'sx1262';
   if (normalized === 'sx1262_ch341') return 'sx1262_ch341';
   if (normalized === 'kiss') return 'kiss';
-  if (normalized === 'pymc_tcp') return 'pymc_tcp';
-  if (normalized === 'pymc_usb') return 'pymc_usb';
+  if (normalized === 'modem_tcp') return 'modem_tcp';
+  if (normalized === 'modem_usb') return 'modem_usb';
   return 'none';
 }
 
@@ -425,28 +429,28 @@ function loadHardwareFormFromSections(sections: {
   radio_type?: unknown;
   radio?: Record<string, unknown>;
   kiss?: Record<string, unknown>;
-  pymc_usb?: Record<string, unknown>;
-  pymc_tcp?: Record<string, unknown>;
+  modem_usb?: Record<string, unknown>;
+  modem_tcp?: Record<string, unknown>;
   sx1262?: Record<string, unknown>;
   ch341?: Record<string, unknown>;
 }) {
   selectedRadioType.value = normalizeRadioType(sections.radio_type);
   loadAirFormFromRadio(sections.radio);
   const kiss = (sections.kiss ?? {}) as Record<string, unknown>;
-  const pymcUsb = (sections.pymc_usb ?? {}) as Record<string, unknown>;
-  const pymcTcp = (sections.pymc_tcp ?? {}) as Record<string, unknown>;
+  const modemUsb = (sections.modem_usb ?? {}) as Record<string, unknown>;
+  const modemTcp = (sections.modem_tcp ?? {}) as Record<string, unknown>;
   const sx = (sections.sx1262 ?? {}) as Record<string, unknown>;
   const ch341 = (sections.ch341 ?? {}) as Record<string, unknown>;
 
   kissPort.value = asString(kiss.port, '/dev/ttyUSB0');
   kissBaudRate.value = asNumber(kiss.baud_rate, 9600);
 
-  pymcUsbPort.value = asString(pymcUsb.port, '/dev/ttyACM0');
-  pymcUsbBaudRate.value = asNumber(pymcUsb.baudrate, 921600);
+  modemUsbPort.value = asString(modemUsb.port, '/dev/ttyACM0');
+  modemUsbBaudRate.value = asNumber(modemUsb.baudrate, 921600);
 
-  pymcTcpHost.value = asString(pymcTcp.host, '');
-  pymcTcpPort.value = asNumber(pymcTcp.port, 5055);
-  pymcTcpToken.value = asString(pymcTcp.token, '');
+  modemTcpHost.value = asString(modemTcp.host, '');
+  modemTcpPort.value = asNumber(modemTcp.port, 5055);
+  modemTcpToken.value = asString(modemTcp.token, '');
 
   const pinDefaults = defaultSxPins(selectedRadioType.value);
   sxBusId.value = pinNumber(sx.bus_id, pinDefaults.bus_id);
@@ -503,8 +507,8 @@ function sectionsFromEntry(entry: Record<string, unknown> | null) {
       radio_type: config.value.radio_type,
       radio: config.value.radio,
       kiss: config.value.kiss,
-      pymc_usb: config.value.pymc_usb,
-      pymc_tcp: config.value.pymc_tcp,
+      modem_usb: config.value.modem_usb,
+      modem_tcp: config.value.modem_tcp,
       sx1262: config.value.sx1262,
       ch341: config.value.ch341,
     };
@@ -513,8 +517,8 @@ function sectionsFromEntry(entry: Record<string, unknown> | null) {
     radio_type: entry.radio_type,
     radio: (entry.radio as Record<string, unknown>) || {},
     kiss: (entry.kiss as Record<string, unknown>) || {},
-    pymc_usb: (entry.pymc_usb as Record<string, unknown>) || {},
-    pymc_tcp: (entry.pymc_tcp as Record<string, unknown>) || {},
+    modem_usb: (entry.modem_usb as Record<string, unknown>) || {},
+    modem_tcp: (entry.modem_tcp as Record<string, unknown>) || {},
     sx1262: (entry.sx1262 as Record<string, unknown>) || {},
     ch341: (entry.ch341 as Record<string, unknown>) || {},
   };
@@ -554,8 +558,8 @@ function loadActiveHardwareAndAir() {
     radio_type: activeHardware.value.radio_type ?? config.value.radio_type,
     radio: (entry?.radio as Record<string, unknown>) || config.value.radio,
     kiss: activeHardware.value.kiss,
-    pymc_usb: activeHardware.value.pymc_usb,
-    pymc_tcp: activeHardware.value.pymc_tcp,
+    modem_usb: activeHardware.value.modem_usb,
+    modem_tcp: activeHardware.value.modem_tcp,
     sx1262: activeHardware.value.sx1262,
     ch341: activeHardware.value.ch341,
   });
@@ -640,12 +644,12 @@ async function loadHardwareOptions() {
     // while other endpoints return { success, data }. Support both.
     const legacyHardware = (result as unknown as { hardware?: unknown }).hardware;
     if (Array.isArray(legacyHardware)) {
-      hardwareOptions.value = legacyHardware as HardwareOption[];
+      hardwareOptions.value = normalizeModemHardwareOptions(legacyHardware as HardwareOption[]);
       return;
     }
 
     if (result.success && Array.isArray(result.data)) {
-      hardwareOptions.value = result.data;
+      hardwareOptions.value = normalizeModemHardwareOptions(result.data);
       return;
     }
 
@@ -691,8 +695,8 @@ function liveHardwareSections(): {
   sx1262: Record<string, unknown>;
   ch341: Record<string, unknown>;
   kiss: Record<string, unknown>;
-  pymc_usb: Record<string, unknown>;
-  pymc_tcp: Record<string, unknown>;
+  modem_usb: Record<string, unknown>;
+  modem_tcp: Record<string, unknown>;
 } {
   // Prefer the currently rendered single-radio form values when they look populated,
   // otherwise fall back to stats/config sections (nested or top-level).
@@ -702,8 +706,8 @@ function liveHardwareSections(): {
     sx1262: cloneRecord(config.value.sx1262),
     ch341: cloneRecord(config.value.ch341),
     kiss: cloneRecord(config.value.kiss),
-    pymc_usb: cloneRecord(config.value.pymc_usb),
-    pymc_tcp: cloneRecord(config.value.pymc_tcp),
+    modem_usb: cloneRecord(config.value.modem_usb),
+    modem_tcp: cloneRecord(config.value.modem_tcp),
   };
 
   // If form currently shows the live single-radio hardware, prefer form pins so we
@@ -770,8 +774,8 @@ function buildLegacyRadioEntry(id: string): Record<string, unknown> {
   if (Object.keys(live.sx1262).length) entry.sx1262 = live.sx1262;
   if (Object.keys(live.ch341).length) entry.ch341 = live.ch341;
   if (Object.keys(live.kiss).length) entry.kiss = live.kiss;
-  if (Object.keys(live.pymc_usb).length) entry.pymc_usb = live.pymc_usb;
-  if (Object.keys(live.pymc_tcp).length) entry.pymc_tcp = live.pymc_tcp;
+  if (Object.keys(live.modem_usb).length) entry.modem_usb = live.modem_usb;
+  if (Object.keys(live.modem_tcp).length) entry.modem_tcp = live.modem_tcp;
   return entry;
 }
 
@@ -866,11 +870,11 @@ function buildSecondaryRadioShell(id: string): Record<string, unknown> {
   if (rtype === 'kiss') {
     entry.kiss = { port: '', baud_rate: asNumber(config.value.kiss?.baud_rate, 9600) };
   }
-  if (rtype === 'pymc_usb') {
-    entry.pymc_usb = { port: '', baudrate: asNumber(config.value.pymc_usb?.baudrate, 921600) };
+  if (rtype === 'modem_usb') {
+    entry.modem_usb = { port: '', baudrate: asNumber(config.value.modem_usb?.baudrate, 921600) };
   }
-  if (rtype === 'pymc_tcp') {
-    entry.pymc_tcp = { host: '', port: asNumber(config.value.pymc_tcp?.port, 5055), token: '' };
+  if (rtype === 'modem_tcp') {
+    entry.modem_tcp = { host: '', port: asNumber(config.value.modem_tcp?.port, 5055), token: '' };
   }
   return entry;
 }
@@ -908,8 +912,8 @@ function mirrorDefaultRadioToLegacy(
   if (defEntry.sx1262) importBody.sx1262 = defEntry.sx1262;
   if (defEntry.ch341) importBody.ch341 = defEntry.ch341;
   if (defEntry.kiss) importBody.kiss = defEntry.kiss;
-  if (defEntry.pymc_usb) importBody.pymc_usb = defEntry.pymc_usb;
-  if (defEntry.pymc_tcp) importBody.pymc_tcp = defEntry.pymc_tcp;
+  if (defEntry.modem_usb) importBody.modem_usb = defEntry.modem_usb;
+  if (defEntry.modem_tcp) importBody.modem_tcp = defEntry.modem_tcp;
   if (defEntry.radio) importBody.radio = defEntry.radio;
 }
 
@@ -1068,8 +1072,8 @@ function validateMultiRadioHardware(
       ch341Owners.set(key, id);
     }
 
-    if (rtype === 'kiss' || rtype === 'pymc_usb') {
-      const section = (rtype === 'kiss' ? entry.kiss : entry.pymc_usb) as Record<string, unknown> | undefined;
+    if (rtype === 'kiss' || rtype === 'modem_usb') {
+      const section = (rtype === 'kiss' ? entry.kiss : entry.modem_usb) as Record<string, unknown> | undefined;
       const port = String(section?.port || '').trim();
       if (!port) {
         return {
@@ -1087,8 +1091,8 @@ function validateMultiRadioHardware(
       serialOwners.set(port, id);
     }
 
-    if (rtype === 'pymc_tcp') {
-      const tcp = (entry.pymc_tcp as Record<string, unknown>) || {};
+    if (rtype === 'modem_tcp') {
+      const tcp = (entry.modem_tcp as Record<string, unknown>) || {};
       if (!String(tcp.host || '').trim()) {
         return {
           radioId: id,
@@ -1101,8 +1105,8 @@ function validateMultiRadioHardware(
 }
 
 function buildHardwarePayloadFromForm(): Record<string, unknown> | null {
-  if (selectedRadioType.value === 'pymc_tcp' && !pymcTcpHost.value.trim()) {
-    errorMessage.value = 'TCP modem host is required for pymc_tcp';
+  if (selectedRadioType.value === 'modem_tcp' && !modemTcpHost.value.trim()) {
+    errorMessage.value = 'TCP modem host is required for modem_tcp';
     return null;
   }
 
@@ -1144,18 +1148,19 @@ function buildHardwarePayloadFromForm(): Record<string, unknown> | null {
     };
   }
 
-  if (selectedRadioType.value === 'pymc_usb') {
-    payload.pymc_usb = {
-      port: pymcUsbPort.value.trim() || '/dev/ttyACM0',
-      baudrate: asNumber(pymcUsbBaudRate.value, 921600),
+  if (selectedRadioType.value === 'modem_usb') {
+    payload.modem_usb = {
+      port: modemUsbPort.value.trim() || '/dev/ttyACM0',
+      baudrate: asNumber(modemUsbBaudRate.value, 921600),
     };
   }
 
-  if (selectedRadioType.value === 'pymc_tcp') {
-    payload.pymc_tcp = {
-      host: pymcTcpHost.value.trim(),
-      port: asNumber(pymcTcpPort.value, 5055),
-      token: pymcTcpToken.value,
+  if (selectedRadioType.value === 'modem_tcp') {
+    const token = modemTcpToken.value.trim();
+    payload.modem_tcp = {
+      host: modemTcpHost.value.trim(),
+      port: asNumber(modemTcpPort.value, 5055),
+      ...(token ? { token } : {}),
     };
   }
 
@@ -1219,13 +1224,13 @@ function applyPayloadToEntry(
   delete updated.sx1262;
   delete updated.ch341;
   delete updated.kiss;
-  delete updated.pymc_usb;
-  delete updated.pymc_tcp;
+  delete updated.modem_usb;
+  delete updated.modem_tcp;
   if (payload.sx1262) updated.sx1262 = payload.sx1262;
   if (payload.ch341) updated.ch341 = payload.ch341;
   if (payload.kiss) updated.kiss = payload.kiss;
-  if (payload.pymc_usb) updated.pymc_usb = payload.pymc_usb;
-  if (payload.pymc_tcp) updated.pymc_tcp = payload.pymc_tcp;
+  if (payload.modem_usb) updated.modem_usb = payload.modem_usb;
+  if (payload.modem_tcp) updated.modem_tcp = payload.modem_tcp;
   // Air settings: prefer form payload.radio, else keep existing entry.radio.
   if (payload.radio && typeof payload.radio === 'object') {
     updated.radio = payload.radio;
@@ -1354,8 +1359,8 @@ function disableMultiRadio() {
     radio_type: config.value.radio_type,
     radio: config.value.radio,
     kiss: config.value.kiss,
-    pymc_usb: config.value.pymc_usb,
-    pymc_tcp: config.value.pymc_tcp,
+    modem_usb: config.value.modem_usb,
+    modem_tcp: config.value.modem_tcp,
     sx1262: config.value.sx1262,
     ch341: config.value.ch341,
   });
@@ -1480,8 +1485,8 @@ function radioHardwareReady(entry: Record<string, unknown>): boolean {
     return true;
   }
   if (rtype === 'kiss') return Boolean(String((entry.kiss as any)?.port || '').trim());
-  if (rtype === 'pymc_usb') return Boolean(String((entry.pymc_usb as any)?.port || '').trim());
-  if (rtype === 'pymc_tcp') return Boolean(String((entry.pymc_tcp as any)?.host || '').trim());
+  if (rtype === 'modem_usb') return Boolean(String((entry.modem_usb as any)?.port || '').trim());
+  if (rtype === 'modem_tcp') return Boolean(String((entry.modem_tcp as any)?.host || '').trim());
   return true;
 }
 
@@ -1510,9 +1515,9 @@ const workingRadioCards = computed(() =>
 const activeRadioLabel = computed(() => workingSelectedId.value || '—');
 
 const showSerialFields = computed(
-  () => selectedRadioType.value === 'kiss' || selectedRadioType.value === 'pymc_usb',
+  () => selectedRadioType.value === 'kiss' || selectedRadioType.value === 'modem_usb',
 );
-const showTcpFields = computed(() => selectedRadioType.value === 'pymc_tcp');
+const showTcpFields = computed(() => selectedRadioType.value === 'modem_tcp');
 const showSx1262Fields = computed(
   () => selectedRadioType.value === 'sx1262' || selectedRadioType.value === 'sx1262_ch341',
 );
@@ -1536,7 +1541,7 @@ onMounted(() => {
 watch(
   [isEditing, selectedRadioType],
   ([editing, type]) => {
-    if (editing && (type === 'kiss' || type === 'pymc_usb')) {
+    if (editing && (type === 'kiss' || type === 'modem_usb')) {
       void loadSerialDevices();
     }
     if (editing && (type === 'sx1262' || type === 'sx1262_ch341')) {
@@ -1982,7 +1987,7 @@ watch(
             Serial Port
           </span>
           <div v-if="!isEditing" class="text-content-primary font-mono text-sm break-all">
-            {{ selectedRadioType === 'kiss' ? kissPort : pymcUsbPort }}
+            {{ selectedRadioType === 'kiss' ? kissPort : modemUsbPort }}
           </div>
           <template v-else>
             <div class="w-full sm:w-80 space-y-2">
@@ -2009,15 +2014,15 @@ watch(
                 </select>
                 <select
                   v-else
-                  v-model="pymcUsbPort"
+                  v-model="modemUsbPort"
                   class="cfg-select flex-1"
                   :disabled="useCustomSerialPath"
                 >
                   <option
-                    v-if="pymcUsbPort && !serialDevices.some((d) => d.device === pymcUsbPort)"
-                    :value="pymcUsbPort"
+                    v-if="modemUsbPort && !serialDevices.some((d) => d.device === modemUsbPort)"
+                    :value="modemUsbPort"
                   >
-                    {{ pymcUsbPort }} (current)
+                    {{ modemUsbPort }} (current)
                   </option>
                   <option
                     v-for="dev in serialDevices"
@@ -2051,7 +2056,7 @@ watch(
               />
               <input
                 v-if="useCustomSerialPath && selectedRadioType !== 'kiss'"
-                v-model="pymcUsbPort"
+                v-model="modemUsbPort"
                 type="text"
                 class="cfg-input"
                 placeholder="/dev/ttyACM0"
@@ -2072,7 +2077,7 @@ watch(
             Baud Rate
           </span>
           <div v-if="!isEditing" class="text-content-primary font-mono text-sm">
-            {{ selectedRadioType === 'kiss' ? kissBaudRate : pymcUsbBaudRate }}
+            {{ selectedRadioType === 'kiss' ? kissBaudRate : modemUsbBaudRate }}
           </div>
           <template v-else>
             <input
@@ -2084,7 +2089,7 @@ watch(
             />
             <input
               v-else
-              v-model.number="pymcUsbBaudRate"
+              v-model.number="modemUsbBaudRate"
               type="number"
               min="1"
               class="cfg-input w-full sm:w-40"
@@ -2097,25 +2102,25 @@ watch(
         <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 border-b border-stroke-subtle dark:border-stroke/opacity-light gap-2">
           <span class="text-content-secondary dark:text-content-muted text-xs sm:text-sm">TCP Host</span>
           <div v-if="!isEditing" class="text-content-primary font-mono text-sm break-all">
-            {{ pymcTcpHost || 'Not set' }}
+            {{ modemTcpHost || 'Not set' }}
           </div>
           <input
             v-else
-            v-model="pymcTcpHost"
+            v-model="modemTcpHost"
             type="text"
             class="cfg-input w-full sm:w-72"
-            placeholder="pymc-3e2834.local"
+            placeholder="openhop-modem.local"
           />
         </div>
 
         <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 border-b border-stroke-subtle dark:border-stroke/opacity-light gap-2">
           <span class="text-content-secondary dark:text-content-muted text-xs sm:text-sm">TCP Port</span>
           <div v-if="!isEditing" class="text-content-primary font-mono text-sm">
-            {{ pymcTcpPort }}
+            {{ modemTcpPort }}
           </div>
           <input
             v-else
-            v-model.number="pymcTcpPort"
+            v-model.number="modemTcpPort"
             type="number"
             min="1"
             max="65535"
@@ -2126,12 +2131,12 @@ watch(
         <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 border-b border-stroke-subtle dark:border-stroke/opacity-light gap-2">
           <span class="text-content-secondary dark:text-content-muted text-xs sm:text-sm">TCP Token</span>
           <div v-if="!isEditing" class="text-content-primary font-mono text-sm">
-            {{ pymcTcpToken ? 'Configured' : 'Not set' }}
+            {{ modemTcpToken ? 'Configured' : 'Not set' }}
           </div>
           <input
             v-else
-            v-model="pymcTcpToken"
-            type="text"
+            v-model="modemTcpToken"
+            type="password"
             class="cfg-input w-full sm:w-72"
             placeholder="Optional"
           />
