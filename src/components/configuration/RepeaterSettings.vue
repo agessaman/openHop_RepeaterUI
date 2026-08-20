@@ -31,6 +31,31 @@ const pathHashModeInput = ref(1); // 1, 2, or 3 bytes (UI); backend uses 0, 1, 2
 
 // Mesh config: path_hash_mode 0=1-byte, 1=2-byte, 2=3-byte
 const meshConfig = computed(() => config.value.mesh || {});
+
+const getNumericConfigValue = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (
+    value &&
+    typeof value === 'object' &&
+    'parsedValue' in (value as Record<string, unknown>) &&
+    typeof (value as { parsedValue?: unknown }).parsedValue === 'number'
+  ) {
+    return (value as { parsedValue: number }).parsedValue;
+  }
+  return undefined;
+};
+
+const getDirectAdvertIntervalHours = (): number | undefined => {
+  return getNumericConfigValue(repeaterConfig.value.direct_advert_interval_hours);
+};
+
+const formatHours = (value: number): string => {
+  const rounded = Math.round(value * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+};
+
 // Load current values into form
 watch(
   [config, repeaterConfig, meshConfig],
@@ -40,7 +65,7 @@ watch(
       latitudeInput.value = repeaterConfig.value.latitude || 0;
       longitudeInput.value = repeaterConfig.value.longitude || 0;
       advertIntervalInput.value = repeaterConfig.value.send_advert_interval_hours || 0;
-      directAdvertIntervalInput.value = repeaterConfig.value.direct_advert_interval_hours || 0;
+      directAdvertIntervalInput.value = getDirectAdvertIntervalHours() || 0;
       const phm = meshConfig.value.path_hash_mode;
       pathHashModeInput.value = phm === 0 || phm === 1 || phm === 2 ? phm + 1 : 1;
     }
@@ -87,10 +112,11 @@ const advertInterval = computed(() => {
 });
 
 const directAdvertInterval = computed(() => {
-  const interval = repeaterConfig.value.direct_advert_interval_hours;
+  const interval = getDirectAdvertIntervalHours();
   if (interval === undefined) return 'Not set';
   if (interval === 0) return 'Disabled';
-  return interval + ' hour' + (interval !== 1 ? 's' : '');
+  const displayValue = formatHours(interval);
+  return displayValue + ' hour' + (Number(displayValue) !== 1 ? 's' : '');
 });
 
 const pathHashModeDisplay = computed(() => {
@@ -113,7 +139,7 @@ const cancelEditing = () => {
   latitudeInput.value = repeaterConfig.value.latitude || 0;
   longitudeInput.value = repeaterConfig.value.longitude || 0;
   advertIntervalInput.value = repeaterConfig.value.send_advert_interval_hours || 0;
-  directAdvertIntervalInput.value = repeaterConfig.value.direct_advert_interval_hours || 0;
+  directAdvertIntervalInput.value = getDirectAdvertIntervalHours() || 0;
   const phm = meshConfig.value.path_hash_mode;
   pathHashModeInput.value = phm === 0 || phm === 1 || phm === 2 ? phm + 1 : 1;
 };
@@ -487,6 +513,7 @@ defineExpose({ requestLeave, isEditing });
             <input
               v-model.number="directAdvertIntervalInput"
               type="number"
+              step="0.5"
               min="0"
               max="168"
               class="cfg-input w-20"
