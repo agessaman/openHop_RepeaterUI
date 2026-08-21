@@ -180,7 +180,7 @@ export interface SystemStats {
   radio_error?: string;
   last_packet_time?: number;
   noise_floor_dbm?: number;
-  utilization_percent?: number | { source?: string; parsedValue?: number };
+  utilization_percent?: number;
   /** Carried by the WS vitals broadcast; over HTTP the mode lives in config. */
   mode?: 'forward' | 'monitor' | 'no_tx';
   advert_tier?: {
@@ -251,10 +251,10 @@ export interface SystemStats {
     };
     duty_cycle?: {
       enforcement_enabled?: boolean;
-      max_airtime_percent?: number | { source?: string; parsedValue?: number };
+      max_airtime_percent?: number;
     };
     delays?: {
-      tx_delay_factor?: { source?: string; parsedValue?: number };
+      tx_delay_factor?: number;
       direct_tx_delay_factor?: number;
     };
     mesh?: {
