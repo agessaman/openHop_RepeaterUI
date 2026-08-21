@@ -198,6 +198,13 @@ export const useSystemStore = defineStore('system', () => {
   }
 
   function updateControlStatesFromStats(statsData: SystemStats) {
+    // The WS vitals broadcast carries the mode at top level (config only
+    // travels over HTTP) — so a change made over RF or CLI reaches the badge.
+    const liveMode = statsData.mode;
+    if (liveMode === 'forward' || liveMode === 'monitor' || liveMode === 'no_tx') {
+      currentMode.value = liveMode;
+    }
+
     // Extract control states from stats data
     if (statsData.config) {
       // Update mode (normalize unknown to forward per backend)
