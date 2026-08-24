@@ -220,29 +220,18 @@ export const useSystemStore = defineStore('system', () => {
       if (dutyCycle) {
         dutyCycleEnabled.value = dutyCycle.enforcement_enabled !== false;
 
-        // Handle both number and parsed value format for max_airtime_percent
-        const maxAirtime = dutyCycle.max_airtime_percent;
-        if (typeof maxAirtime === 'number') {
-          dutyCycleMax.value = maxAirtime;
-        } else if (maxAirtime && typeof maxAirtime === 'object' && 'parsedValue' in maxAirtime) {
-          dutyCycleMax.value = maxAirtime.parsedValue || 10;
+        if (typeof dutyCycle.max_airtime_percent === 'number') {
+          dutyCycleMax.value = dutyCycle.max_airtime_percent;
         }
       }
     }
 
-    // Update utilization from stats - handle both number and parsed value format.
     // The backend's utilization_percent is the share of the ALLOWED BUDGET
     // consumed over its sliding minute (100 = budget exhausted), not a share
     // of airtime: convert so it lives in the same unit as dutyCycleMax.
     const utilization = statsData.utilization_percent;
-    let budgetShare: number | null = null;
     if (typeof utilization === 'number') {
-      budgetShare = utilization;
-    } else if (utilization && typeof utilization === 'object' && 'parsedValue' in utilization) {
-      budgetShare = utilization.parsedValue || 0;
-    }
-    if (budgetShare !== null) {
-      dutyCycleUtilization.value = (budgetShare * dutyCycleMax.value) / 100;
+      dutyCycleUtilization.value = (utilization * dutyCycleMax.value) / 100;
     }
   }
 
