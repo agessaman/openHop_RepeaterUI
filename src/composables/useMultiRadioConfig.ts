@@ -4,6 +4,7 @@
  */
 import { computed, ref, type Ref } from 'vue'
 import { useSystemStore } from '@/stores/system'
+import { normalizeModemTransportConfig } from '@/utils/modemTransport'
 
 export type FabricTxMode = 'default' | 'sticky' | 'bridge'
 
@@ -14,8 +15,8 @@ export interface RadioListEntry {
   sx1262?: Record<string, unknown>
   ch341?: Record<string, unknown>
   kiss?: Record<string, unknown>
-  pymc_usb?: Record<string, unknown>
-  pymc_tcp?: Record<string, unknown>
+  modem_usb?: Record<string, unknown>
+  modem_tcp?: Record<string, unknown>
   [key: string]: unknown
 }
 
@@ -40,7 +41,7 @@ export function normalizeRadioEntries(raw: unknown): RadioListEntry[] {
     const e = entry as Record<string, unknown>
     const id = String(e.id ?? e.radio_id ?? '').trim()
     if (!id) continue
-    out.push({ ...(e as RadioListEntry), id })
+    out.push({ ...(normalizeModemTransportConfig(e) as RadioListEntry), id })
   }
   return out
 }
@@ -53,7 +54,7 @@ export function useMultiRadioConfig() {
     if (!stats) return {}
     const nested = asRecord(stats.config)
     // Match RadioHardwareSettings merge: some builds nest, some flatten.
-    return { ...stats, ...nested }
+    return normalizeModemTransportConfig({ ...stats, ...nested })
   })
 
   const radios = computed<RadioListEntry[]>(() => {
@@ -138,8 +139,8 @@ export function useMultiRadioConfig() {
         sx1262: asRecord(entry.sx1262),
         ch341: asRecord(entry.ch341),
         kiss: asRecord(entry.kiss),
-        pymc_usb: asRecord(entry.pymc_usb),
-        pymc_tcp: asRecord(entry.pymc_tcp),
+        modem_usb: asRecord(entry.modem_usb),
+        modem_tcp: asRecord(entry.modem_tcp),
       }
     }
     return {
@@ -147,8 +148,8 @@ export function useMultiRadioConfig() {
       sx1262: asRecord(rootConfig.value.sx1262),
       ch341: asRecord(rootConfig.value.ch341),
       kiss: asRecord(rootConfig.value.kiss),
-      pymc_usb: asRecord(rootConfig.value.pymc_usb),
-      pymc_tcp: asRecord(rootConfig.value.pymc_tcp),
+      modem_usb: asRecord(rootConfig.value.modem_usb),
+      modem_tcp: asRecord(rootConfig.value.modem_tcp),
     }
   })
 

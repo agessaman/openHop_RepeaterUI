@@ -205,6 +205,9 @@ export interface SystemStats {
     sx1262?: Record<string, unknown>;
     ch341?: Record<string, unknown>;
     kiss?: Record<string, unknown>;
+    modem_usb?: Record<string, unknown>;
+    modem_tcp?: Record<string, unknown>;
+    /** Compatibility aliases returned by older backends. */
     pymc_usb?: Record<string, unknown>;
     pymc_tcp?: Record<string, unknown>;
     repeater?: {
