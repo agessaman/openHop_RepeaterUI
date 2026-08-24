@@ -181,6 +181,14 @@ export interface SystemStats {
   last_packet_time?: number;
   noise_floor_dbm?: number;
   utilization_percent?: number | { source?: string; parsedValue?: number };
+  /** Carried by the WS vitals broadcast; over HTTP the mode lives in config. */
+  mode?: 'forward' | 'monitor' | 'no_tx';
+  advert_tier?: {
+    current_tier?: string;
+    adverts_allowed?: number;
+    adverts_dropped?: number;
+    active_penalties?: number;
+  };
   duplicate_cache_size?: number;
   cache_ttl?: number;
   config?: {
