@@ -223,12 +223,19 @@ export const useSystemStore = defineStore('system', () => {
       }
     }
 
-    // Update utilization from stats - handle both number and parsed value format
+    // Update utilization from stats - handle both number and parsed value format.
+    // The backend's utilization_percent is the share of the ALLOWED BUDGET
+    // consumed over its sliding minute (100 = budget exhausted), not a share
+    // of airtime: convert so it lives in the same unit as dutyCycleMax.
     const utilization = statsData.utilization_percent;
+    let budgetShare: number | null = null;
     if (typeof utilization === 'number') {
-      dutyCycleUtilization.value = utilization;
+      budgetShare = utilization;
     } else if (utilization && typeof utilization === 'object' && 'parsedValue' in utilization) {
-      dutyCycleUtilization.value = utilization.parsedValue || 0;
+      budgetShare = utilization.parsedValue || 0;
+    }
+    if (budgetShare !== null) {
+      dutyCycleUtilization.value = (budgetShare * dutyCycleMax.value) / 100;
     }
   }
 
