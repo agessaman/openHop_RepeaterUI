@@ -5,7 +5,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import Supercluster from 'supercluster';
 import { formatRSSI, formatSNR, formatTimestamp, formatRouteType } from '@/utils/formatters';
-import { getCartoTileUrls } from '@/utils/cartoTiles';
+import { getMapTileUrls } from '@/utils/mapTiles';
 
 // Prevent chrome detection errors
 if (typeof window !== 'undefined' && !(window as unknown as Record<string, unknown>).chrome) {
@@ -90,6 +90,7 @@ const maxClusterZoomRef = ref(14); // Increased max zoom level for clustering
 
 // Theme detection
 const isDarkMode = ref(document.documentElement.classList.contains('dark'));
+const hasCartoApiKey = computed(() => Boolean(props.cartoApiKey?.trim()));
 
 const MAP_COLORS = {
   base: 'var(--color-accent-red)',
@@ -263,25 +264,25 @@ const initializeOpenStreetMap = async () => {
 
   // Theme-aware tile layers with error handling
   try {
-    const tileUrls = getCartoTileUrls(isDarkMode.value, props.cartoApiKey);
-    if (tileUrls) {
-      const tileLayer = L.tileLayer(tileUrls.baseUrl, {
-        maxZoom: 19,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        errorTileUrl:
-          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-      });
+    const tileUrls = getMapTileUrls(isDarkMode.value, props.cartoApiKey);
+    const tileLayer = L.tileLayer(tileUrls.baseUrl, {
+      maxZoom: 19,
+      attribution: hasCartoApiKey.value
+        ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      errorTileUrl:
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    });
+    tileLayer.addTo(map);
+
+    if (tileUrls.labelsUrl) {
       const labelsLayer = L.tileLayer(tileUrls.labelsUrl, {
         maxZoom: 19,
         attribution: '',
         errorTileUrl:
           'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
       });
-      tileLayer.addTo(map);
       labelsLayer.addTo(map);
-    } else {
-      console.warn('CARTO basemaps API key is not configured');
     }
   } catch (tileErr) {
     console.warn('Error loading tiles:', tileErr);
@@ -826,20 +827,6 @@ onUnmounted(() => {
       style="position: relative"
     />
 
-    <div
-      v-if="hasValidCoordinates && !cartoApiKey?.trim()"
-      class="absolute inset-0 z-200 flex items-center justify-center p-4 pointer-events-none"
-    >
-      <div class="glass-card max-w-sm p-5 text-center pointer-events-auto">
-        <h3 class="text-base font-semibold text-content-primary mb-2">Map API key required</h3>
-        <p class="text-sm text-content-secondary dark:text-content-muted mb-4">
-          Add a free CARTO basemaps API key to load light and dark map tiles.
-        </p>
-        <RouterLink to="/configuration?tab=web" class="btn-primary inline-flex">
-          Configure CARTO Key
-        </RouterLink>
-      </div>
-    </div>
 
     <!-- Legend Toggle Button -->
     <button
@@ -917,7 +904,7 @@ onUnmounted(() => {
 
     <!-- Manual attribution to avoid chrome errors -->
     <div v-if="hasValidCoordinates" class="map-attribution z-200">
-      © OpenStreetMap contributors © CARTO
+      © OpenStreetMap contributors<span v-if="hasCartoApiKey"> © CARTO</span>
     </div>
   </div>
 </template>

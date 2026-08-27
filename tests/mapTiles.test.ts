@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getCartoTileUrls } from '@/utils/cartoTiles';
+import { getMapTileUrls } from '@/utils/mapTiles';
 
-describe('CARTO tile URLs', () => {
+describe('map tile URLs', () => {
   it('adds an encoded API key to both dark tile layers', () => {
-    expect(getCartoTileUrls(true, 'key with/+symbols')).toEqual({
+    expect(getMapTileUrls(true, 'key with/+symbols')).toEqual({
       baseUrl:
         'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png?key=key%20with%2F%2Bsymbols',
       labelsUrl:
@@ -12,14 +12,17 @@ describe('CARTO tile URLs', () => {
   });
 
   it('uses light tile layers when light mode is active', () => {
-    expect(getCartoTileUrls(false, 'carto-key')).toEqual({
+    expect(getMapTileUrls(false, 'carto-key')).toEqual({
       baseUrl: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png?key=carto-key',
       labelsUrl:
         'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png?key=carto-key',
     });
   });
 
-  it('does not request CARTO tiles without a key', () => {
-    expect(getCartoTileUrls(true, '   ')).toBeNull();
+  it('falls back to light OpenStreetMap tiles without a CARTO key', () => {
+    expect(getMapTileUrls(true, '   ')).toEqual({
+      baseUrl: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      labelsUrl: null,
+    });
   });
 });

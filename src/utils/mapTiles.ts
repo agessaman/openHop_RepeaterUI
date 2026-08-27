@@ -1,14 +1,16 @@
-export interface CartoTileUrls {
+export interface MapTileUrls {
   baseUrl: string;
-  labelsUrl: string;
+  labelsUrl: string | null;
 }
 
-export function getCartoTileUrls(
-  darkMode: boolean,
-  apiKey: string | null | undefined,
-): CartoTileUrls | null {
+export function getMapTileUrls(darkMode: boolean, apiKey: string | null | undefined): MapTileUrls {
   const key = apiKey?.trim();
-  if (!key) return null;
+  if (!key) {
+    return {
+      baseUrl: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      labelsUrl: null,
+    };
+  }
 
   const style = darkMode ? 'dark' : 'light';
   const encodedKey = encodeURIComponent(key);
