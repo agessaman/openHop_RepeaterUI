@@ -272,6 +272,12 @@ export interface SystemStats {
       auto_install_packages?: boolean;
       definitions?: Array<Record<string, unknown>>;
     };
+    web?: {
+      cors_enabled?: boolean;
+      web_path?: string | null;
+      site_name?: string;
+      carto_api_key?: string;
+    };
     mqtt_brokers?: {
       iata_code?: string;
       status_interval?: number;

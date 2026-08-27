@@ -5,6 +5,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import Supercluster from 'supercluster';
 import { formatRSSI, formatSNR, formatTimestamp, formatRouteType } from '@/utils/formatters';
+import { getMapTileUrls } from '@/utils/mapTiles';
 
 // Prevent chrome detection errors
 if (typeof window !== 'undefined' && !(window as unknown as Record<string, unknown>).chrome) {
@@ -55,6 +56,7 @@ interface Props {
   baseLongitude?: number | null;
   statsLoading?: boolean;
   showLegend?: boolean;
+  cartoApiKey?: string | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -62,6 +64,7 @@ const props = withDefaults(defineProps<Props>(), {
   baseLongitude: null,
   statsLoading: false,
   showLegend: true,
+  cartoApiKey: null,
 });
 
 const emit = defineEmits<{
@@ -87,6 +90,7 @@ const maxClusterZoomRef = ref(14); // Increased max zoom level for clustering
 
 // Theme detection
 const isDarkMode = ref(document.documentElement.classList.contains('dark'));
+const hasCartoApiKey = computed(() => Boolean(props.cartoApiKey?.trim()));
 
 const MAP_COLORS = {
   base: 'var(--color-accent-red)',
@@ -260,31 +264,26 @@ const initializeOpenStreetMap = async () => {
 
   // Theme-aware tile layers with error handling
   try {
-    const baseUrl = isDarkMode.value
-      ? 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png';
-
-    const labelsUrl = isDarkMode.value
-      ? 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png';
-
-    const tileLayer = L.tileLayer(baseUrl, {
+    const tileUrls = getMapTileUrls(isDarkMode.value, props.cartoApiKey);
+    const tileLayer = L.tileLayer(tileUrls.baseUrl, {
       maxZoom: 19,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      attribution: hasCartoApiKey.value
+        ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       errorTileUrl:
         'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
     });
-
-    const labelsLayer = L.tileLayer(labelsUrl, {
-      maxZoom: 19,
-      attribution: '',
-      errorTileUrl:
-        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-    });
-
     tileLayer.addTo(map);
-    labelsLayer.addTo(map);
+
+    if (tileUrls.labelsUrl) {
+      const labelsLayer = L.tileLayer(tileUrls.labelsUrl, {
+        maxZoom: 19,
+        attribution: '',
+        errorTileUrl:
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      });
+      labelsLayer.addTo(map);
+    }
   } catch (tileErr) {
     console.warn('Error loading tiles:', tileErr);
   }
@@ -828,6 +827,7 @@ onUnmounted(() => {
       style="position: relative"
     />
 
+
     <!-- Legend Toggle Button -->
     <button
       v-if="hasValidCoordinates && adverts.length > 0"
@@ -904,7 +904,7 @@ onUnmounted(() => {
 
     <!-- Manual attribution to avoid chrome errors -->
     <div v-if="hasValidCoordinates" class="map-attribution z-200">
-      © OpenStreetMap contributors © CARTO
+      © OpenStreetMap contributors<span v-if="hasCartoApiKey"> © CARTO</span>
     </div>
   </div>
 </template>

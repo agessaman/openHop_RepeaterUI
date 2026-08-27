@@ -37,6 +37,7 @@ const contactTypeColors = {
 const advertsByType = computed(() => neighborStore.advertsByType);
 const loading = computed(() => neighborStore.isLoading);
 const error = ref<string | null>(null);
+const cartoApiKey = computed(() => systemStore.stats?.config?.web?.carto_api_key ?? '');
 
 // Hours dropdown
 const selectedHours = ref(getPreference('neighbors_selectedHours', neighborStore.currentHours));
@@ -702,6 +703,7 @@ onUnmounted(() => {
         :base-latitude="baseLatitude"
         :base-longitude="baseLongitude"
         :stats-loading="statsLoading"
+        :carto-api-key="cartoApiKey"
         :show-legend="showMapLegend"
         @update:show-legend="showMapLegend = $event"
       />

@@ -4,7 +4,9 @@
     <div class="cfg-page-heading flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
       <div>
         <h3 class="text-base sm:text-lg font-semibold text-content-primary mb-1 sm:mb-2">Web Options</h3>
-        <p class="text-content-secondary dark:text-content-muted text-xs sm:text-sm">Configure site identification, CORS policy and web frontend selection</p>
+        <p class="text-content-secondary dark:text-content-muted text-xs sm:text-sm">
+          Configure site identification, map tiles, CORS policy and web frontend selection
+        </p>
       </div>
     </div>
 
@@ -56,6 +58,65 @@
           <p class="text-xs text-content-secondary dark:text-content-muted mt-1.5">
             Shown in the browser tab and above the login form. Leave blank to use the default title.
           </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map Tiles -->
+    <div class="cfg-section">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <h3 class="text-lg font-semibold text-content-primary mb-1">Map Tiles</h3>
+          <p class="text-sm text-content-secondary dark:text-content-muted">
+            Configure CARTO basemaps for the Neighbors map
+          </p>
+        </div>
+      </div>
+      <div class="space-y-3">
+        <label for="carto-api-key" class="block text-sm font-medium text-content-primary">
+          CARTO Basemaps API Key
+        </label>
+        <input
+          id="carto-api-key"
+          v-model="localConfig.carto_api_key"
+          data-testid="carto-api-key"
+          type="password"
+          autocomplete="off"
+          placeholder="Paste your CARTO basemaps key"
+          class="cfg-input"
+          :disabled="saving"
+          @keyup.enter="saveSettings"
+        />
+        <p class="text-xs text-content-secondary dark:text-content-muted">
+          Required by CARTO for light and dark map tiles. The key is sent to CARTO by each browser
+          and is therefore not a private server secret.
+          <a
+            href="https://carto.com/basemaps/apikey/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-primary hover:underline"
+          >Request a free key</a>.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            data-testid="save-carto-api-key"
+            class="btn-primary"
+            :disabled="saving"
+            @click="saveSettings"
+          >
+            Save API Key
+          </button>
+          <button
+            v-if="localConfig.carto_api_key"
+            type="button"
+            data-testid="clear-carto-api-key"
+            class="btn-secondary"
+            :disabled="saving"
+            @click="clearCartoApiKey"
+          >
+            Clear API Key
+          </button>
         </div>
       </div>
     </div>
@@ -322,6 +383,7 @@ interface WebConfig {
   cors_enabled: boolean;
   use_default_frontend: boolean;
   site_name: string;
+  carto_api_key: string;
 }
 
 const { stats } = storeToRefs(useSystemStore());
@@ -337,6 +399,7 @@ const localConfig = reactive<WebConfig>({
   cors_enabled: false,
   use_default_frontend: true,
   site_name: '',
+  carto_api_key: '',
 });
 
 const saveMessageClass = computed(() => {
@@ -361,11 +424,13 @@ async function checkPymcConsole() {
 }
 
 function loadSettings() {
-  const webConfig = (stats.value?.config as any)?.web || {};
+  const webConfig = stats.value?.config?.web || {};
   localConfig.cors_enabled = webConfig.cors_enabled === true;
   const webPath = webConfig.web_path;
   localConfig.use_default_frontend = !webPath || webPath === '';
   localConfig.site_name = typeof stats.value?.site_name === 'string' ? stats.value.site_name : '';
+  localConfig.carto_api_key =
+    typeof webConfig.carto_api_key === 'string' ? webConfig.carto_api_key : '';
 }
 
 async function saveSettings() {
@@ -373,10 +438,18 @@ async function saveSettings() {
   saveMessage.value = '';
 
   try {
-    const updates: any = {
+    const updates: {
+      web: {
+        cors_enabled: boolean;
+        site_name: string;
+        carto_api_key: string;
+        web_path?: string | null;
+      };
+    } = {
       web: {
         cors_enabled: localConfig.cors_enabled,
         site_name: localConfig.site_name.trim(),
+        carto_api_key: localConfig.carto_api_key.trim(),
       },
     };
 
@@ -408,9 +481,9 @@ async function saveSettings() {
     } else {
       showMessage(response.error || 'Failed to save settings', false);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to save web settings:', error);
-    showMessage(error.message || 'Failed to save settings', false);
+    showMessage(error instanceof Error ? error.message : 'Failed to save settings', false);
   } finally {
     saving.value = false;
   }
@@ -418,6 +491,11 @@ async function saveSettings() {
 
 async function toggleCors() {
   localConfig.cors_enabled = !localConfig.cors_enabled;
+  await saveSettings();
+}
+
+async function clearCartoApiKey() {
+  localConfig.carto_api_key = '';
   await saveSettings();
 }
 
