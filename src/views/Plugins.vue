@@ -135,6 +135,40 @@ function displayPluginState(plugin: PluginStatus): string {
   return plugin.state || 'UNKNOWN';
 }
 
+function pluginIdCandidates(id?: string | null): string[] {
+  const raw = String(id || '').trim().toLowerCase();
+  if (!raw) return [];
+  const dot = raw.replace(/:/g, '.');
+  const colon = raw.replace(/\./g, ':');
+  const compact = raw.replace(/[.:]/g, '');
+  return Array.from(new Set([raw, dot, colon, compact]));
+}
+
+function catalogueEntryFor(plugin: PluginStatus): CataloguePlugin | null {
+  const idSet = new Set(pluginIdCandidates(plugin.id));
+  for (const entry of catalogue.value) {
+    for (const candidate of pluginIdCandidates(entry.id)) {
+      if (idSet.has(candidate)) return entry;
+    }
+  }
+  return null;
+}
+
+function pluginLatestVersion(plugin: PluginStatus): string | null {
+  const fromPlugin = plugin.latestVersion || null;
+  if (fromPlugin) return fromPlugin;
+  return catalogueEntryFor(plugin)?.latestVersion || null;
+}
+
+function pluginHasUpdate(plugin: PluginStatus): boolean {
+  if (plugin.updateAvailable) return true;
+  const entry = catalogueEntryFor(plugin);
+  if (entry?.updateAvailable) return true;
+  const latest = pluginLatestVersion(plugin);
+  if (!plugin.version || !latest) return false;
+  return plugin.version !== latest;
+}
+
 function flash(message: string) {
   statusMessage.value = message;
   window.setTimeout(() => {
@@ -634,13 +668,26 @@ onMounted(() => {
               class="border-t border-stroke-subtle dark:border-white/opacity-light"
             >
               <td class="px-3 py-3 align-top">
-                <div class="font-medium text-content-heading">{{ plugin.name || plugin.id }}</div>
+                <div class="flex items-center gap-2">
+                  <div class="font-medium text-content-heading">{{ plugin.name || plugin.id }}</div>
+                  <span
+                    v-if="pluginHasUpdate(plugin)"
+                    class="inline-flex rounded-full border border-accent-amber/opacity-medium bg-accent-amber/opacity-light px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-accent-amber"
+                  >
+                    Update available
+                  </span>
+                </div>
                 <div class="text-xs text-content-muted break-all">{{ plugin.id }}</div>
                 <div v-if="plugin.description" class="mt-1 text-xs text-content-muted line-clamp-2">
                   {{ plugin.description }}
                 </div>
               </td>
-              <td class="px-3 py-3 align-top text-content-heading">{{ plugin.version || '—' }}</td>
+              <td class="px-3 py-3 align-top text-content-heading">
+                <div>{{ plugin.version || '—' }}</div>
+                <div v-if="pluginHasUpdate(plugin) && pluginLatestVersion(plugin)" class="text-xs text-accent-amber">
+                  Latest {{ pluginLatestVersion(plugin) }}
+                </div>
+              </td>
               <td class="px-3 py-3 align-top">
                 <span
                   class="inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold"
