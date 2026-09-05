@@ -42,6 +42,10 @@ const catalogueError = ref<string | null>(null);
 const catalogueLoaded = ref(false);
 const catalogueBusyId = ref<string | null>(null);
 const cataloguePage = ref(1);
+const catalogueImageAspect = ref<Record<string, number>>({});
+const showReadmeDialog = ref(false);
+const readmeDialogTitle = ref('');
+const readmeDialogUrl = ref('');
 
 // Install dialog
 const showInstallDialog = ref(false);
@@ -356,13 +360,43 @@ function onCatalogueLogoError(event: Event) {
   }
 }
 
-function catalogueHeroClass(entry: CataloguePlugin): string {
-  // Square artwork usually contains logos/text and should not be aggressively cropped.
-  const category = (entry.category || '').toLowerCase();
-  if (category === 'integration' || category === 'utility') {
-    return 'object-contain p-4';
-  }
-  return 'object-cover';
+function onCatalogueLogoLoad(id: string, event: Event) {
+  const img = event.target;
+  if (!(img instanceof HTMLImageElement)) return;
+  const { naturalWidth, naturalHeight } = img;
+  if (!naturalWidth || !naturalHeight) return;
+  catalogueImageAspect.value = {
+    ...catalogueImageAspect.value,
+    [id]: naturalWidth / naturalHeight,
+  };
+}
+
+function catalogueHeroImageClass(id: string): string {
+  const aspect = catalogueImageAspect.value[id];
+  if (!aspect) return 'w-full h-full object-cover object-center';
+  // Square/portrait artwork is usually a logo and should remain fully visible.
+  if (aspect <= 1.2) return 'w-full h-full object-contain object-center p-2';
+  return 'w-full h-full object-cover object-center';
+}
+
+function catalogueReadmeUrl(entry: CataloguePlugin): string | null {
+  const candidate = entry.homepage;
+  if (!candidate) return null;
+  if (!/^https?:\/\//i.test(candidate)) return null;
+  return candidate;
+}
+
+function openCatalogueReadme(entry: CataloguePlugin) {
+  const url = catalogueReadmeUrl(entry);
+  if (!url) return;
+  readmeDialogTitle.value = entry.name || entry.id;
+  readmeDialogUrl.value = url;
+  showReadmeDialog.value = true;
+}
+
+function openReadmeInNewTab() {
+  if (!readmeDialogUrl.value) return;
+  window.open(readmeDialogUrl.value, '_blank', 'noopener');
 }
 
 async function fetchCatalogue(refresh = false) {
@@ -774,18 +808,17 @@ onMounted(() => {
         >
           <div
             v-if="entry.logo"
-            class="relative h-40 border-b border-stroke-subtle dark:border-white/opacity-light bg-black/opacity-light"
+            class="relative aspect-[16/6] border-b border-stroke-subtle dark:border-white/opacity-light bg-black/opacity-light overflow-hidden"
           >
             <img
               :src="entry.logo"
               :alt="`${entry.name} artwork`"
-              class="w-full h-full"
-              :class="catalogueHeroClass(entry)"
+              :class="catalogueHeroImageClass(entry.id)"
               loading="lazy"
               referrerpolicy="no-referrer"
+              @load="onCatalogueLogoLoad(entry.id, $event)"
               @error="onCatalogueLogoError"
             />
-            <div class="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
           </div>
 
           <div class="p-4 space-y-3">
@@ -810,6 +843,14 @@ onMounted(() => {
               <span v-if="entry.releasesError" class="text-accent-amber">{{ entry.releasesError }}</span>
             </div>
             <div class="flex flex-wrap gap-2">
+              <button
+                v-if="catalogueReadmeUrl(entry)"
+                class="btn-secondary inline-flex items-center gap-2"
+                @click="openCatalogueReadme(entry)"
+              >
+                <ScrollText class="w-4 h-4" />
+                Homepage
+              </button>
               <button
                 v-if="!entry.installed"
                 class="btn-primary inline-flex items-center gap-2"
@@ -844,6 +885,45 @@ onMounted(() => {
         >
           Next
         </button>
+      </div>
+    </div>
+
+    <!-- README dialog -->
+    <div
+      v-if="showReadmeDialog"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      @click.self="showReadmeDialog = false"
+    >
+      <div class="glass-card w-full max-w-5xl rounded-[15px] p-5 sm:p-6 shadow-xl max-h-[90vh] flex flex-col">
+        <div class="flex items-start justify-between gap-3 mb-4">
+          <div class="min-w-0">
+            <h3 class="text-lg font-semibold text-content-heading">README · {{ readmeDialogTitle }}</h3>
+            <p class="text-xs text-content-muted mt-1 break-all">{{ readmeDialogUrl }}</p>
+          </div>
+          <button class="btn-secondary-xs" @click="showReadmeDialog = false">
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <p class="text-xs text-content-muted mb-2">
+          If the page does not render here, the site likely blocks iframe embedding.
+        </p>
+        <iframe
+          :src="readmeDialogUrl"
+          class="w-full flex-1 min-h-[55vh] rounded-[12px] border border-stroke-subtle dark:border-white/opacity-light bg-background-main"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+          sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+          title="Plugin README"
+        />
+
+        <div class="mt-4 flex justify-end gap-2">
+          <button class="btn-secondary inline-flex items-center gap-2" @click="openReadmeInNewTab">
+            <ExternalLink class="w-4 h-4" />
+            Open in new tab
+          </button>
+          <button class="btn-primary" @click="showReadmeDialog = false">Close</button>
+        </div>
       </div>
     </div>
 

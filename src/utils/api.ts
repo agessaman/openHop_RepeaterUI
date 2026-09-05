@@ -170,6 +170,8 @@ export interface CataloguePlugin {
   description?: string;
   repository: string;
   category?: string;
+  /** Optional project homepage URL */
+  homepage?: string;
   /** HTTPS URL to plugin logo/icon */
   logo?: string;
   installed?: boolean;

@@ -285,7 +285,7 @@ const toggleMobileSidebar = () => {
           </div>
         </div>
         <a
-          href="https://github.com/openhop-dev/openhop-repeater/issues/new"
+          href="https://github.com/openhop-dev/openhop_repeater/issues/new"
           target="_blank"
           rel="noopener noreferrer"
           class="topbar-icon-btn hidden sm:flex"
