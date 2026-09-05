@@ -111,6 +111,8 @@ const summaryCards = computed(() => {
 
 function stateBadgeClass(state?: string): string {
   switch ((state || '').toUpperCase()) {
+    case 'UI READY':
+      return 'bg-accent-green/opacity-light text-accent-green border-accent-green/opacity-medium';
     case 'RUNNING':
       return 'bg-accent-green/opacity-light text-accent-green border-accent-green/opacity-medium';
     case 'FAILED':
@@ -124,6 +126,13 @@ function stateBadgeClass(state?: string): string {
     default:
       return 'bg-accent-cyan/opacity-light text-accent-cyan border-accent-cyan/opacity-medium';
   }
+}
+
+function displayPluginState(plugin: PluginStatus): string {
+  if (!plugin.has_runtime && plugin.has_ui) {
+    return plugin.enabled ? 'UI READY' : 'DISABLED';
+  }
+  return plugin.state || 'UNKNOWN';
 }
 
 function flash(message: string) {
@@ -635,13 +644,21 @@ onMounted(() => {
               <td class="px-3 py-3 align-top">
                 <span
                   class="inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold"
-                  :class="stateBadgeClass(plugin.state)"
+                  :class="stateBadgeClass(displayPluginState(plugin))"
                 >
-                  {{ plugin.state || 'UNKNOWN' }}
+                  {{ displayPluginState(plugin) }}
                 </span>
                 <div class="mt-1 text-xs text-content-muted">
-                  {{ plugin.enabled ? 'Enabled' : 'Disabled' }}
-                  <span v-if="plugin.pid"> · pid {{ plugin.pid }}</span>
+                  <template v-if="plugin.has_runtime">
+                    {{ plugin.enabled ? 'Enabled' : 'Disabled' }}
+                    <span v-if="plugin.pid"> · pid {{ plugin.pid }}</span>
+                  </template>
+                  <template v-else-if="plugin.has_ui">
+                    {{ plugin.enabled ? 'No background service' : 'UI disabled' }}
+                  </template>
+                  <template v-else>
+                    {{ plugin.enabled ? 'Enabled' : 'Disabled' }}
+                  </template>
                 </div>
               </td>
               <td class="px-3 py-3 align-top text-content-muted">
