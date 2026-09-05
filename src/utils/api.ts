@@ -142,6 +142,55 @@ export interface ApiResponse<T = unknown> {
   filters?: Record<string, unknown>;
 }
 
+/** Plugin manager status payload (see /api/plugins). */
+export interface PluginStatus {
+  id: string;
+  name?: string;
+  version?: string;
+  enabled?: boolean;
+  state?: string;
+  pid?: number | null;
+  last_exit_code?: number | null;
+  has_runtime?: boolean;
+  has_ui?: boolean;
+  ui_entry?: string | null;
+  data_dir?: string;
+  description?: string;
+  source?: string | null;
+  repository?: string | null;
+  latestVersion?: string | null;
+  updateAvailable?: boolean;
+  updated?: boolean;
+}
+
+/** Curated catalogue entry from /api/plugins/catalogue. */
+export interface CataloguePlugin {
+  id: string;
+  name: string;
+  description?: string;
+  repository: string;
+  category?: string;
+  /** HTTPS URL to plugin logo/icon */
+  logo?: string;
+  installed?: boolean;
+  installedVersion?: string | null;
+  latestVersion?: string | null;
+  updateAvailable?: boolean;
+  releasesError?: string;
+}
+
+export interface PluginUpdateInfo {
+  id: string;
+  installedVersion?: string | null;
+  latestVersion?: string | null;
+  updateAvailable?: boolean;
+  repository?: string | null;
+  releaseNotes?: string | null;
+  releaseUrl?: string | null;
+  releaseTag?: string | null;
+  reason?: string;
+}
+
 // Configure the base API URL
 // Use relative paths in both dev and production since Vite proxy handles dev forwarding
 const API_BASE_URL = '/api';
@@ -1371,6 +1420,154 @@ export class ApiService {
     try {
       const params = await this.getGeneratedRequestParams();
       const response = await generatedApiClient.dbVacuum.dbVacuumCreate(params);
+      return response.data;
+    } catch (error: unknown) {
+      throw this.handleError(error);
+    }
+  }
+
+  // ========================
+  // Plugin Manager
+  // ========================
+
+  static async listPlugins(): Promise<ApiResponse<unknown> & { plugins?: PluginStatus[] }> {
+    return this.get('/plugins/');
+  }
+
+  static async getPlugin(id: string): Promise<ApiResponse<unknown> & PluginStatus> {
+    return this.get(`/plugins/${encodeURIComponent(id)}`) as Promise<
+      ApiResponse<unknown> & PluginStatus
+    >;
+  }
+
+  static async installPluginWheel(
+    file: File,
+  ): Promise<ApiResponse<unknown> & { plugin?: PluginStatus }> {
+    const form = new FormData();
+    form.append('wheel', file);
+    try {
+      const response = await apiClient.post('/plugins/install', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw this.handleError(error);
+    }
+  }
+
+  static async enablePlugin(id: string): Promise<ApiResponse<unknown> & { plugin?: PluginStatus }> {
+    return this.post('/plugins/enable', { id });
+  }
+
+  static async disablePlugin(
+    id: string,
+  ): Promise<ApiResponse<unknown> & { plugin?: PluginStatus }> {
+    return this.post('/plugins/disable', { id });
+  }
+
+  static async startPlugin(id: string): Promise<ApiResponse<unknown> & { plugin?: PluginStatus }> {
+    return this.post('/plugins/start', { id });
+  }
+
+  static async stopPlugin(id: string): Promise<ApiResponse<unknown> & { plugin?: PluginStatus }> {
+    return this.post('/plugins/stop', { id });
+  }
+
+  static async restartPlugin(
+    id: string,
+  ): Promise<ApiResponse<unknown> & { plugin?: PluginStatus }> {
+    return this.post('/plugins/restart', { id });
+  }
+
+  static async getPluginLogs(
+    id: string,
+    tail = 200,
+  ): Promise<ApiResponse<unknown> & { id?: string; lines?: string[]; tail?: number }> {
+    return this.get('/plugins/logs', { id, tail });
+  }
+
+  static async uninstallPlugin(
+    id: string,
+    deleteData = false,
+  ): Promise<ApiResponse<unknown> & { uninstalled?: boolean; data_deleted?: boolean }> {
+    return this.post('/plugins/uninstall', { id, delete_data: deleteData });
+  }
+
+  static async getPluginConfig(
+    id: string,
+  ): Promise<
+    ApiResponse<unknown> & {
+      id?: string;
+      path?: string;
+      exists?: boolean;
+      defaults?: Record<string, unknown>;
+      saved?: Record<string, unknown>;
+      config?: Record<string, unknown>;
+    }
+  > {
+    // Path is /plugins/settings — CherryPy reserves controller attribute "config".
+    return this.get('/plugins/settings', { id });
+  }
+
+  static async setPluginConfig(
+    id: string,
+    config: Record<string, unknown>,
+    restart = false,
+  ): Promise<
+    ApiResponse<unknown> & {
+      id?: string;
+      path?: string;
+      exists?: boolean;
+      config?: Record<string, unknown>;
+      restarted?: boolean;
+    }
+  > {
+    return this.post('/plugins/settings', { id, config, restart });
+  }
+
+  static async listPluginCatalogue(
+    refresh = false,
+  ): Promise<ApiResponse<unknown> & { schema?: number; plugins?: CataloguePlugin[] }> {
+    return this.get('/plugins/catalogue', refresh ? { refresh: 1 } : undefined);
+  }
+
+  static async installCataloguePlugin(
+    id: string,
+    version?: string,
+  ): Promise<ApiResponse<unknown> & { plugin?: PluginStatus }> {
+    const body: Record<string, unknown> = { id };
+    if (version) body.version = version;
+    // Catalogue install downloads a wheel — allow a longer timeout
+    try {
+      const response = await apiClient.post('/plugins/catalogue_install', body, {
+        timeout: 180000,
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw this.handleError(error);
+    }
+  }
+
+  static async checkPluginUpdate(
+    id: string,
+    refresh = false,
+  ): Promise<ApiResponse<unknown> & PluginUpdateInfo> {
+    return this.get('/plugins/updates', {
+      id,
+      ...(refresh ? { refresh: 1 } : {}),
+    }) as Promise<ApiResponse<unknown> & PluginUpdateInfo>;
+  }
+
+  static async updatePlugin(
+    id: string,
+    version?: string,
+  ): Promise<ApiResponse<unknown> & { plugin?: PluginStatus }> {
+    const body: Record<string, unknown> = { id };
+    if (version) body.version = version;
+    try {
+      const response = await apiClient.post('/plugins/update', body, {
+        timeout: 180000,
+      });
       return response.data;
     } catch (error: unknown) {
       throw this.handleError(error);
