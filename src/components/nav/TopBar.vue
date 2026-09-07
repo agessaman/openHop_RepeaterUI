@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 import { useAnchoredDropdown } from '@/composables/useAnchoredDropdown';
 import ApiService from '@/utils/api';
+import type { CataloguePlugin } from '@/utils/api';
 import { useSystemStore } from '@/stores/system';
 import { useNeighborStore } from '@/stores/neighbors';
 import { CONTACT_TYPE_MAP } from '@/stores/neighbors';
@@ -13,6 +14,7 @@ import RestartModal from '@/components/modals/RestartModal.vue';
 import ChangePasswordModal from '@/components/modals/ChangePasswordModal.vue';
 import { useManagedPolling } from '@/composables/useManagedPolling';
 import { useAppRuntimeStore } from '@/stores/appRuntime';
+import { useWebSocketStore } from '@/stores/websocket';
 import Spinner from '@/components/ui/Spinner.vue';
 
 defineOptions({ name: 'TopBar' });
@@ -27,12 +29,15 @@ const router = useRouter();
 const systemStore = useSystemStore();
 const neighborStore = useNeighborStore();
 const appRuntime = useAppRuntimeStore();
+const websocketStore = useWebSocketStore();
 
 const notif = useAnchoredDropdown();
 const userMenu = useAnchoredDropdown();
 const showUpdateModal = ref(false);
 const showRestartModal = ref(false);
 const showChangePasswordModal = ref(false);
+
+const PLUGIN_UPDATE_POLL_MS = 30 * 60 * 1000;
 
 // Update checking state
 const updateInfo = ref<{
@@ -53,7 +58,41 @@ const updateInfo = ref<{
   rateLimitUntil: null,
 });
 
+const pluginUpdateInfo = ref<{
+  availableCount: number;
+  isChecking: boolean;
+  lastChecked: Date | null;
+  error: string | null;
+}>({
+  availableCount: 0,
+  isChecking: false,
+  lastChecked: null,
+  error: null,
+});
+
 const username = ref<string>(getUsername() || 'User');
+const lastUpdateToastState = ref({ appHasUpdate: false, pluginCount: 0 });
+
+const showUpdateToastIfNeeded = (appHasUpdate: boolean, pluginCount: number) => {
+  const previous = lastUpdateToastState.value;
+  const appChangedToAvailable = appHasUpdate && !previous.appHasUpdate;
+  const pluginsChangedToAvailable = pluginCount > 0 && previous.pluginCount === 0;
+
+  if (appChangedToAvailable || pluginsChangedToAvailable) {
+    const messages: string[] = [];
+
+    if (appHasUpdate) messages.push('Repeater update available');
+    if (pluginCount > 0) {
+      messages.push(
+        `${pluginCount} plugin update${pluginCount === 1 ? '' : 's'} available`,
+      );
+    }
+
+    websocketStore.showSnackbar(messages.join(' • '), 'info', 6000);
+  }
+
+  lastUpdateToastState.value = { appHasUpdate, pluginCount };
+};
 
 // Track specific contact types (keys from CONTACT_TYPE_MAP)
 const targetContactTypes = ['Chat Node', 'Repeater', 'Room Server'] as const;
@@ -97,6 +136,7 @@ const checkForUpdates = async (force = false) => {
         updateInfo.value.lastChecked = new Date();
         updateInfo.value.error = status.error ?? null;
         updateInfo.value.rateLimitUntil = status.rate_limit_until ?? null;
+        showUpdateToastIfNeeded(updateInfo.value.hasUpdate, pluginUpdateInfo.value.availableCount);
         return;
       }
       await new Promise((r) => setTimeout(r, 500));
@@ -117,6 +157,7 @@ const handleInstalled = () => {
   notif.close();
   // Refresh update status so the bell badge reflects the new version
   checkForUpdates();
+  void checkPluginUpdates(true);
   // Immediately refresh /api/stats so the sidebar version reflects the newly installed package
   systemStore.fetchStats();
 };
@@ -142,6 +183,44 @@ const reloadPage = () => {
   window.location.reload();
 };
 
+const openPluginsPage = async () => {
+  notif.close();
+  await router.push('/plugins');
+};
+
+const countAvailablePluginUpdates = (entries: CataloguePlugin[]): number =>
+  entries.filter((entry) => {
+    const installed = !!entry.installed || !!entry.installedVersion;
+    const updateAvailable =
+      !!entry.updateAvailable ||
+      (typeof entry.installedVersion === 'string' &&
+        typeof entry.latestVersion === 'string' &&
+        entry.installedVersion !== entry.latestVersion);
+    return installed && updateAvailable;
+  }).length;
+
+const checkPluginUpdates = async (force = false) => {
+  if (pluginUpdateInfo.value.isChecking) return;
+
+  try {
+    pluginUpdateInfo.value.isChecking = true;
+    pluginUpdateInfo.value.error = null;
+    const res = await ApiService.listPluginCatalogue(force);
+    if (res.success === false) {
+      throw new Error(res.error || 'Failed to check plugin updates');
+    }
+    const entries = Array.isArray(res.plugins) ? res.plugins : [];
+    pluginUpdateInfo.value.availableCount = countAvailablePluginUpdates(entries);
+    pluginUpdateInfo.value.lastChecked = new Date();
+    showUpdateToastIfNeeded(updateInfo.value.hasUpdate, pluginUpdateInfo.value.availableCount);
+  } catch (err) {
+    pluginUpdateInfo.value.error =
+      err instanceof Error ? err.message : 'Failed to check plugin updates';
+  } finally {
+    pluginUpdateInfo.value.isChecking = false;
+  }
+};
+
 // Computed totals
 const totalTrackedNodes = computed(() => {
   const total = Object.values(trackedNodes.value).reduce((total, nodes) => total + nodes.length, 0);
@@ -159,8 +238,14 @@ const trackedBreakdown = computed(() => {
   return breakdown;
 });
 
-// Notification badge logic - always show so users know the bell is interactive
-const showNotificationBadge = computed(() => true);
+const notificationCount = computed(() => {
+  const appUpdateCount = updateInfo.value.hasUpdate ? 1 : 0;
+  return appUpdateCount + pluginUpdateInfo.value.availableCount;
+});
+
+const showNotificationBadge = computed(
+  () => notificationCount.value > 0 || updateInfo.value.isChecking || pluginUpdateInfo.value.isChecking,
+);
 
 const radioWarning = computed(() => {
   const status = String(systemStore.stats?.radio_status ?? '').toLowerCase();
@@ -197,12 +282,28 @@ const getLatestNodeName = (contactType: string) => {
   return latestNode.node_name || 'Unknown Node';
 };
 
+const handlePluginStateChanged = () => {
+  void checkPluginUpdates(true);
+};
+
 onMounted(() => {
   checkForUpdates();
+  void checkPluginUpdates();
+  window.addEventListener('plugins-state-changed', handlePluginStateChanged);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('plugins-state-changed', handlePluginStateChanged);
 });
 
 useManagedPolling(() => checkForUpdates(), {
   intervalMs: 600000,
+  enabled: true,
+  immediate: false,
+});
+
+useManagedPolling(() => checkPluginUpdates(), {
+  intervalMs: PLUGIN_UPDATE_POLL_MS,
   enabled: true,
   immediate: false,
 });
@@ -285,7 +386,7 @@ const toggleMobileSidebar = () => {
           </div>
         </div>
         <a
-          href="https://github.com/openhop-dev/openhop-repeater/issues/new"
+          href="https://github.com/openhop-dev/openhop_repeater/issues/new"
           target="_blank"
           rel="noopener noreferrer"
           class="topbar-icon-btn hidden sm:flex"
@@ -370,16 +471,20 @@ const toggleMobileSidebar = () => {
             />
           </svg>
           <span
-            v-if="showNotificationBadge"
+            v-if="notificationCount > 0"
+            class="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[10px] leading-4 text-white text-center font-semibold bg-accent-red"
+          >
+            {{ notificationCount > 9 ? '9+' : notificationCount }}
+          </span>
+          <span
+            v-else-if="showNotificationBadge"
             class="absolute top-2 right-2 w-2 h-2 rounded-full"
             :class="
-              updateInfo.hasUpdate
+              updateInfo.isChecking || pluginUpdateInfo.isChecking
+                ? 'bg-secondary animate-pulse'
+                : updateInfo.hasUpdate
                 ? 'bg-accent-red animate-pulse'
-                : updateInfo.isChecking
-                  ? 'bg-secondary animate-pulse'
-                  : updateInfo.currentVersion
-                    ? 'bg-accent-green'
-                    : 'bg-content-muted/opacity-heavy'
+                : 'bg-content-muted/opacity-heavy'
             "
           ></span>
         </button>
@@ -545,6 +650,49 @@ const toggleMobileSidebar = () => {
               </div>
               <div class="text-xs text-content-secondary dark:text-content-muted">
                 {{ updateInfo.error }}
+              </div>
+            </div>
+
+            <!-- Separator -->
+            <div class="border-t border-stroke-subtle dark:border-stroke/opacity-light"></div>
+
+            <!-- Plugin update summary -->
+            <div
+              class="bg-background-mute dark:bg-background-mute p-3 rounded-lg border border-stroke-subtle dark:border-stroke/opacity-light"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-content-primary font-medium">Plugin Updates</span>
+                <span
+                  class="text-xs font-semibold px-2 py-0.5 rounded-full"
+                  :class="pluginUpdateInfo.availableCount > 0 ? 'bg-accent-amber/opacity-light text-accent-amber' : 'bg-accent-green/opacity-light text-accent-green'"
+                >
+                  {{ pluginUpdateInfo.availableCount > 0 ? `${pluginUpdateInfo.availableCount} available` : 'Up to date' }}
+                </span>
+              </div>
+              <div class="text-xs text-content-muted mt-1">
+                <span v-if="pluginUpdateInfo.isChecking">Checking catalogue…</span>
+                <span v-else-if="pluginUpdateInfo.lastChecked">
+                  Last checked: {{ pluginUpdateInfo.lastChecked.toLocaleTimeString() }}
+                </span>
+                <span v-else>Not checked yet</span>
+              </div>
+              <div v-if="pluginUpdateInfo.error" class="text-xs text-accent-red mt-1">
+                {{ pluginUpdateInfo.error }}
+              </div>
+              <div class="mt-2 flex items-center gap-2">
+                <button
+                  @click="checkPluginUpdates(true)"
+                  :disabled="pluginUpdateInfo.isChecking"
+                  class="text-xs text-content-muted hover:text-content-secondary disabled:opacity-50 transition-colors"
+                >
+                  {{ pluginUpdateInfo.isChecking ? 'Checking…' : 'Re-check' }}
+                </button>
+                <button
+                  @click="openPluginsPage"
+                  class="text-xs text-primary hover:text-primary/opacity-heavy transition-colors"
+                >
+                  Open Plugins
+                </button>
               </div>
             </div>
 
