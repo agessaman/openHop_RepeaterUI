@@ -16,7 +16,9 @@ import { navigationItems, knownCapabilities } from '@/config/navigation';
 import type { NavItemConfig } from '@/config/navigation';
 import { useTheme } from '@/composables/useTheme';
 import { useSidebarPin } from '@/composables/useSidebarPin';
-import { Pin, X } from '@lucide/vue';
+import MeshCoreQrModal from '../modals/MeshCoreQrModal.vue';
+import { buildMeshCoreAddContactUrl, isValidMeshCorePublicKey } from '@/utils/meshcoreQr';
+import { Pin, QrCode, X } from '@lucide/vue';
 import openHopLogo from '@/assets/logo/openhop_transparent_trim.png';
 
 defineOptions({ name: 'SidebarNav' });
@@ -249,6 +251,29 @@ const currentTime = computed(() => {
   if (times.length === 0) return 'Never';
   return times.reduce((a, b) => (a > b ? a : b)).toLocaleTimeString();
 });
+
+const showRepeaterQrModal = ref(false);
+const repeaterQrValue = ref('');
+const repeaterPublicKey = computed(() => systemStore.stats?.public_key ?? '');
+const repeaterQrAvailable = computed(() => isValidMeshCorePublicKey(repeaterPublicKey.value));
+
+function openRepeaterQr() {
+  if (!repeaterQrAvailable.value) {
+    return;
+  }
+
+  const contactName = (systemStore.nodeName || 'Repeater').trim() || 'Repeater';
+  repeaterQrValue.value = buildMeshCoreAddContactUrl({
+    name: contactName,
+    publicKey: repeaterPublicKey.value,
+    type: 2,
+  });
+  showRepeaterQrModal.value = true;
+}
+
+function closeRepeaterQr() {
+  showRepeaterQrModal.value = false;
+}
 </script>
 
 <template>
@@ -303,9 +328,20 @@ const currentTime = computed(() => {
               :title="systemStore.statusBadge.title"
             />
           </p>
-          <p class="text-content-secondary dark:text-content-muted text-sm mt-1">
-            &lt;{{ systemStore.pubKey }}&gt;
-          </p>
+          <div class="mt-1 flex items-center gap-2">
+            <p class="text-content-secondary dark:text-content-muted text-sm">
+              &lt;{{ systemStore.pubKey }}&gt;
+            </p>
+            <button
+              type="button"
+              class="inline-flex items-center justify-center rounded-[8px] border border-stroke-subtle dark:border-stroke/opacity-medium p-1 text-content-secondary hover:text-content-primary hover:border-primary/opacity-heavy transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="!repeaterQrAvailable"
+              title="Show repeater contact QR"
+              @click="openRepeaterQr"
+            >
+              <QrCode class="h-3.5 w-3.5" />
+            </button>
+          </div>
 
           <!-- Status card -->
           <div class="mt-3 rounded-[10px] border border-stroke-subtle dark:border-white/opacity-light bg-white dark:bg-white/opacity-subtle overflow-hidden">
@@ -526,6 +562,14 @@ const currentTime = computed(() => {
     :mode="advertMode"
     @close="closeAdvertModal"
     @send="handleAdvertModalSend"
+  />
+
+  <MeshCoreQrModal
+    :is-open="showRepeaterQrModal"
+    title="Repeater QR"
+    subtitle="Scan in MeshCore app to add this repeater contact (type=2)."
+    :value="repeaterQrValue"
+    @close="closeRepeaterQr"
   />
 </template>
 

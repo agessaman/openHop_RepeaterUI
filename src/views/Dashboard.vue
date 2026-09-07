@@ -56,14 +56,29 @@ onMounted(() => {
           <p class="mt-1 text-content-secondary dark:text-content-muted">
             The repeater is still running, but plugin lifecycle actions are offline until the
             <code class="mx-1">openhop-plugin-manager</code>
-            service is repaired and started.
+            service is restarted and enabled.
           </p>
           <p class="mt-2 text-content-secondary dark:text-content-muted">
-            Fix it from the host shell with
+            Fix it by running the native upgrade helper from the host source checkout that
+            installed this repeater:
             <code class="mx-1 rounded bg-black/10 px-1.5 py-0.5 text-content-primary dark:bg-white/10">
               {{ pluginManagerFixCommand }}
             </code>
-            then refresh the dashboard.
+            That upgrade step installs the missing service unit before enabling it.
+          </p>
+          <p class="mt-2 text-content-secondary dark:text-content-muted">
+            If that checkout is missing or very old, clone a fresh copy first on the host, then
+            rerun the upgrade. If it already exists and is only slightly out of date, update it
+            first instead. For example:
+          </p>
+          <pre class="mt-2 rounded bg-black/10 px-3 py-2 text-xs leading-5 text-content-primary dark:bg-white/10 whitespace-pre-wrap overflow-x-auto">
+cd openhop_repeater/
+git pull
+git switch dev
+sudo ./manage.sh upgrade
+          </pre>
+          <p class="mt-2 text-content-secondary dark:text-content-muted">
+            Then refresh the dashboard.
           </p>
           <p v-if="pluginManagerIssue" class="mt-2 text-xs text-content-muted">
             {{ pluginManagerIssue }}
