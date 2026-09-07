@@ -331,6 +331,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     connectionState,
     reconnectAttempts,
     snackbar,
+    showSnackbar,
     connect,
     disconnect,
     pause,

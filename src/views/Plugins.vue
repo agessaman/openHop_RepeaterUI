@@ -406,6 +406,7 @@ async function fetchPlugins() {
     }
     plugins.value = Array.isArray(res.plugins) ? res.plugins : [];
     if (page.value > totalPages.value) page.value = totalPages.value;
+    window.dispatchEvent(new CustomEvent('plugins-state-changed'));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to load plugins';
     error.value = message;
@@ -689,7 +690,7 @@ async function selectTab(tab: 'installed' | 'catalogue') {
     await fetchCatalogue();
   }
   if (tab === 'installed') {
-    await fetchPlugins();
+    await Promise.all([fetchPlugins(), fetchCatalogue(true)]);
   }
 }
 
@@ -764,6 +765,7 @@ async function checkUpdateFor(plugin: PluginStatus) {
 
 onMounted(() => {
   void fetchPlugins();
+  void fetchCatalogue();
 });
 
 onBeforeUnmount(() => {
@@ -906,7 +908,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Table card -->
-      <div class="glass-card rounded-[15px] p-4 sm:p-6">
+      <div class="glass-card rounded-[15px] p-4 sm:p-6 mt-4">
         <div>
           <h2 class="text-lg font-semibold text-content-heading">Installed plugins</h2>
           <p class="text-sm text-content-muted">

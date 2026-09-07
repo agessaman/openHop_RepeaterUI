@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 import { useAnchoredDropdown } from '@/composables/useAnchoredDropdown';
 import ApiService from '@/utils/api';
 import type { CataloguePlugin } from '@/utils/api';
@@ -14,6 +14,7 @@ import RestartModal from '@/components/modals/RestartModal.vue';
 import ChangePasswordModal from '@/components/modals/ChangePasswordModal.vue';
 import { useManagedPolling } from '@/composables/useManagedPolling';
 import { useAppRuntimeStore } from '@/stores/appRuntime';
+import { useWebSocketStore } from '@/stores/websocket';
 import Spinner from '@/components/ui/Spinner.vue';
 
 defineOptions({ name: 'TopBar' });
@@ -28,6 +29,7 @@ const router = useRouter();
 const systemStore = useSystemStore();
 const neighborStore = useNeighborStore();
 const appRuntime = useAppRuntimeStore();
+const websocketStore = useWebSocketStore();
 
 const notif = useAnchoredDropdown();
 const userMenu = useAnchoredDropdown();
@@ -69,6 +71,28 @@ const pluginUpdateInfo = ref<{
 });
 
 const username = ref<string>(getUsername() || 'User');
+const lastUpdateToastState = ref({ appHasUpdate: false, pluginCount: 0 });
+
+const showUpdateToastIfNeeded = (appHasUpdate: boolean, pluginCount: number) => {
+  const previous = lastUpdateToastState.value;
+  const appChangedToAvailable = appHasUpdate && !previous.appHasUpdate;
+  const pluginsChangedToAvailable = pluginCount > 0 && previous.pluginCount === 0;
+
+  if (appChangedToAvailable || pluginsChangedToAvailable) {
+    const messages: string[] = [];
+
+    if (appHasUpdate) messages.push('Repeater update available');
+    if (pluginCount > 0) {
+      messages.push(
+        `${pluginCount} plugin update${pluginCount === 1 ? '' : 's'} available`,
+      );
+    }
+
+    websocketStore.showSnackbar(messages.join(' • '), 'info', 6000);
+  }
+
+  lastUpdateToastState.value = { appHasUpdate, pluginCount };
+};
 
 // Track specific contact types (keys from CONTACT_TYPE_MAP)
 const targetContactTypes = ['Chat Node', 'Repeater', 'Room Server'] as const;
@@ -112,6 +136,7 @@ const checkForUpdates = async (force = false) => {
         updateInfo.value.lastChecked = new Date();
         updateInfo.value.error = status.error ?? null;
         updateInfo.value.rateLimitUntil = status.rate_limit_until ?? null;
+        showUpdateToastIfNeeded(updateInfo.value.hasUpdate, pluginUpdateInfo.value.availableCount);
         return;
       }
       await new Promise((r) => setTimeout(r, 500));
@@ -187,6 +212,7 @@ const checkPluginUpdates = async (force = false) => {
     const entries = Array.isArray(res.plugins) ? res.plugins : [];
     pluginUpdateInfo.value.availableCount = countAvailablePluginUpdates(entries);
     pluginUpdateInfo.value.lastChecked = new Date();
+    showUpdateToastIfNeeded(updateInfo.value.hasUpdate, pluginUpdateInfo.value.availableCount);
   } catch (err) {
     pluginUpdateInfo.value.error =
       err instanceof Error ? err.message : 'Failed to check plugin updates';
@@ -256,9 +282,18 @@ const getLatestNodeName = (contactType: string) => {
   return latestNode.node_name || 'Unknown Node';
 };
 
+const handlePluginStateChanged = () => {
+  void checkPluginUpdates(true);
+};
+
 onMounted(() => {
   checkForUpdates();
   void checkPluginUpdates();
+  window.addEventListener('plugins-state-changed', handlePluginStateChanged);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('plugins-state-changed', handlePluginStateChanged);
 });
 
 useManagedPolling(() => checkForUpdates(), {

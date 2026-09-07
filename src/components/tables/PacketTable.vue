@@ -655,11 +655,60 @@ function getRouteTypeName(route: number | string) {
   return routeNames[routeValue] || `Route ${route}`;
 }
 
+const getGroupSummary = (group: PacketGroup) => {
+  const forwardedCount = group.packets.filter(
+    (packet) => packet.transmitted && !packet.drop_reason,
+  ).length;
+  const droppedCount = group.packets.filter((packet) => Boolean(packet.drop_reason)).length;
+
+  if (forwardedCount > 0 && droppedCount > 0) {
+    return {
+      label: `Forwarded — ${droppedCount} duplicate${droppedCount === 1 ? '' : 's'} dropped`,
+      className: 'text-accent-green',
+      forwardedCount,
+      droppedCount,
+    };
+  }
+
+  if (forwardedCount > 0) {
+    return {
+      label: 'Forwarded',
+      className: 'text-accent-green',
+      forwardedCount,
+      droppedCount,
+    };
+  }
+
+  if (droppedCount > 0) {
+    return {
+      label: `Dropped — ${droppedCount} ${droppedCount === 1 ? 'copy' : 'copies'} rejected`,
+      className: 'text-accent-red',
+      forwardedCount,
+      droppedCount,
+    };
+  }
+
+  return {
+    label: 'Received',
+    className: 'text-primary',
+    forwardedCount,
+    droppedCount,
+  };
+};
+
 const getStatusClass = (packet: RecentPacket) => {
+  const group = getPacketMeta(packet)?.group;
+  if (group && getPacketMeta(packet)?.isPrimary) {
+    return getGroupSummary(group).className;
+  }
   return packet.transmitted ? 'text-accent-green' : 'text-primary';
 };
 
 const getStatusText = (packet: RecentPacket) => {
+  const meta = getPacketMeta(packet);
+  if (meta?.isPrimary && meta.group.hasDuplicates) {
+    return getGroupSummary(meta.group).label;
+  }
   if (packet.drop_reason) {
     return 'Dropped';
   }
@@ -1337,8 +1386,7 @@ onBeforeUnmount(() => {
                         ></path>
                       </svg>
                       {{ duplicateGroupExpanded(packet) ? 'Hide' : 'Show' }}
-                      {{ duplicateCount(packet) }}
-                      duplicate{{ duplicateCount(packet) === 1 ? '' : 's' }}
+                      details
                     </button>
                   </div>
                   <div
