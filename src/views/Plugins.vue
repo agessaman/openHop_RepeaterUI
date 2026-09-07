@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import ApiService, { type CataloguePlugin, type PluginStatus } from '@/utils/api';
 import Spinner from '@/components/ui/Spinner.vue';
 import {
@@ -77,6 +77,28 @@ const configSaving = ref(false);
 const configError = ref<string | null>(null);
 const configRestart = ref(true);
 
+type PluginProgressState = 'idle' | 'running' | 'complete' | 'error' | 'timeout';
+type PluginProgressOperation = 'install' | 'update';
+
+const PROGRESS_LINE_LIMIT = 400;
+
+const progressDialog = ref(false);
+const progressPluginId = ref('');
+const progressPluginName = ref('');
+const progressOperation = ref<PluginProgressOperation | null>(null);
+const progressState = ref<PluginProgressState>('idle');
+const progressError = ref<string | null>(null);
+const progressLines = ref<string[]>([]);
+let progressSource: EventSource | null = null;
+
+const progressTitle = computed(() => {
+  if (!progressOperation.value) {
+    return 'Plugin progress';
+  }
+  const verb = progressOperation.value === 'install' ? 'Installing' : 'Updating';
+  return `${verb} ${progressPluginName.value || progressPluginId.value}`;
+});
+
 const filteredPlugins = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
   if (!q) return plugins.value;
@@ -94,6 +116,16 @@ const totalPages = computed(() => Math.max(1, Math.ceil(filteredPlugins.value.le
 const pagedPlugins = computed(() => {
   const start = (page.value - 1) * PAGE_SIZE;
   return filteredPlugins.value.slice(start, start + PAGE_SIZE);
+});
+
+const installedPluginIds = computed(() => {
+  const ids = new Set<string>();
+  for (const plugin of plugins.value) {
+    for (const candidate of pluginIdCandidates(plugin.id)) {
+      ids.add(candidate);
+    }
+  }
+  return ids;
 });
 
 const summaryCards = computed(() => {
@@ -174,6 +206,193 @@ function flash(message: string) {
   window.setTimeout(() => {
     if (statusMessage.value === message) statusMessage.value = null;
   }, 4000);
+}
+
+function progressStateLabel(state: PluginProgressState): string {
+  const verb = progressOperation.value === 'update' ? 'Updating' : 'Installing';
+  switch (state) {
+    case 'running':
+      return `${verb}...`;
+    case 'complete':
+      return 'Complete';
+    case 'error':
+    case 'timeout':
+      return 'Error';
+    case 'idle':
+    default:
+      return `${verb}...`;
+  }
+}
+
+function progressStateClass(state: PluginProgressState): string {
+  switch (state) {
+    case 'complete':
+      return 'bg-accent-green/opacity-light text-accent-green border-accent-green/opacity-medium';
+    case 'error':
+    case 'timeout':
+      return 'bg-accent-red/opacity-light text-accent-red border-accent-red/opacity-medium';
+    case 'running':
+      return 'bg-accent-cyan/opacity-light text-accent-cyan border-accent-cyan/opacity-medium';
+    case 'idle':
+    default:
+      return 'bg-accent-amber/opacity-light text-accent-amber border-accent-amber/opacity-medium';
+  }
+}
+
+function closeProgressStream() {
+  if (progressSource) {
+    progressSource.close();
+    progressSource = null;
+  }
+}
+
+function openProgressDialog(pluginId: string, pluginName: string, operation: PluginProgressOperation) {
+  progressDialog.value = true;
+  progressPluginId.value = pluginId;
+  progressPluginName.value = pluginName;
+  progressOperation.value = operation;
+  progressState.value = 'running';
+  progressError.value = null;
+  progressLines.value = [];
+}
+
+function dismissProgressDialog() {
+  if (progressState.value === 'running' || progressState.value === 'idle') {
+    return;
+  }
+  progressDialog.value = false;
+}
+
+function appendProgressLine(line: string) {
+  progressLines.value.push(line);
+  if (progressLines.value.length > PROGRESS_LINE_LIMIT) {
+    progressLines.value.splice(0, progressLines.value.length - PROGRESS_LINE_LIMIT);
+  }
+}
+
+function normalizeProgressState(state?: string): PluginProgressState {
+  switch ((state || '').toLowerCase()) {
+    case 'running':
+    case 'complete':
+    case 'error':
+    case 'timeout':
+    case 'idle':
+      return state as PluginProgressState;
+    default:
+      return 'running';
+  }
+}
+
+function clearProgressBusy(operation: PluginProgressOperation) {
+  if (operation === 'install') {
+    catalogueBusyId.value = null;
+  } else {
+    actionBusyId.value = null;
+  }
+}
+
+function completeProgressOperation(
+  operation: PluginProgressOperation,
+  successMessage: string,
+  refresh: () => Promise<void>,
+  payload: { state?: string; error?: string | null },
+) {
+  const nextState = normalizeProgressState(payload.state);
+  progressState.value = nextState;
+  progressError.value =
+    nextState === 'complete'
+      ? null
+      : payload.error || (nextState === 'timeout' ? 'Progress stream timed out' : 'Plugin operation failed');
+  closeProgressStream();
+  clearProgressBusy(operation);
+  if (nextState === 'complete') {
+    flash(successMessage);
+    void refresh().catch((err) => {
+      console.error('Failed to refresh plugins after progress completion:', err);
+    });
+  }
+}
+
+async function runProgressTrackedAction(
+  pluginId: string,
+  pluginName: string,
+  operation: PluginProgressOperation,
+  successMessage: string,
+  startAction: () => Promise<{ success?: boolean; error?: string }>,
+  refresh: () => Promise<void>,
+) {
+  closeProgressStream();
+  openProgressDialog(pluginId, pluginName, operation);
+  let streamDone = false;
+  if (operation === 'install') {
+    catalogueBusyId.value = pluginId;
+  } else {
+    actionBusyId.value = pluginId;
+  }
+
+  const source = ApiService.openPluginProgressStream(pluginId, 0, true);
+  progressSource = source;
+  source.onmessage = (event) => {
+    try {
+      const payload = JSON.parse(event.data) as {
+        type?: string;
+        line?: string;
+        state?: string;
+        error?: string | null;
+      };
+      switch (payload.type) {
+        case 'connected':
+        case 'keepalive':
+          return;
+        case 'line':
+          if (payload.line) {
+            appendProgressLine(payload.line);
+          }
+          progressState.value = 'running';
+          return;
+        case 'status':
+          progressState.value = normalizeProgressState(payload.state);
+          return;
+        case 'done':
+          streamDone = true;
+          completeProgressOperation(operation, successMessage, refresh, payload);
+          return;
+        default:
+          return;
+      }
+    } catch (err) {
+      console.error('Failed to parse plugin progress event:', err);
+    }
+  };
+  source.onerror = () => {
+    if (progressSource !== source) {
+      return;
+    }
+    if (streamDone) {
+      return;
+    }
+    // Keep UI non-technical: action result remains authoritative.
+    closeProgressStream();
+  };
+
+  try {
+    const res = await startAction();
+    if (res.success === false) {
+      throw new Error(res.error || `${operation === 'install' ? 'Catalogue install' : 'Update'} failed`);
+    }
+    // Some environments can briefly drop SSE. If the action itself succeeded,
+    // treat that as authoritative completion and refresh state.
+    if (!streamDone) {
+      streamDone = true;
+      completeProgressOperation(operation, successMessage, refresh, { state: 'complete', error: null });
+    }
+  } catch (err) {
+    progressState.value = 'error';
+    progressError.value = err instanceof Error ? err.message : `${operation === 'install' ? 'Catalogue install' : 'Update'} failed`;
+    closeProgressStream();
+    clearProgressBusy(operation);
+    throw err;
+  }
 }
 
 async function fetchPlugins() {
@@ -363,7 +582,10 @@ async function confirmUninstall() {
     await ApiService.uninstallPlugin(uninstallTarget.value.id, uninstallDeleteData.value);
     showUninstallDialog.value = false;
     flash(`Uninstalled ${uninstallTarget.value.id}`);
-    await fetchPlugins();
+    await Promise.all([
+      fetchPlugins(),
+      catalogueLoaded.value ? fetchCatalogue(true) : Promise.resolve(),
+    ]);
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Uninstall failed';
   } finally {
@@ -386,11 +608,18 @@ function nextPage() {
 
 
 const catalogueTotalPages = computed(() =>
-  Math.max(1, Math.ceil(catalogue.value.length / PAGE_SIZE)),
+  Math.max(1, Math.ceil(catalogueAvailable.value.length / PAGE_SIZE)),
+);
+const catalogueAvailable = computed(() =>
+  catalogue.value.filter((entry) => {
+    const candidateIds = pluginIdCandidates(entry.id);
+    const installed = candidateIds.some((candidate) => installedPluginIds.value.has(candidate));
+    return !installed || !!entry.updateAvailable;
+  }),
 );
 const pagedCatalogue = computed(() => {
   const start = (cataloguePage.value - 1) * PAGE_SIZE;
-  return catalogue.value.slice(start, start + PAGE_SIZE);
+  return catalogueAvailable.value.slice(start, start + PAGE_SIZE);
 });
 
 function onCatalogueLogoError(event: Event) {
@@ -465,38 +694,39 @@ async function selectTab(tab: 'installed' | 'catalogue') {
 }
 
 async function installFromCatalogue(entry: CataloguePlugin) {
-  catalogueBusyId.value = entry.id;
   catalogueError.value = null;
-  try {
-    const res = await ApiService.installCataloguePlugin(entry.id);
-    if (res.success === false) {
-      throw new Error(res.error || 'Catalogue install failed');
-    }
-    flash(`Installed ${entry.name || entry.id}`);
-    await Promise.all([fetchPlugins(), fetchCatalogue(true)]);
-    activeTab.value = 'installed';
-  } catch (err) {
+  await runProgressTrackedAction(
+    entry.id,
+    entry.name || entry.id,
+    'install',
+    `Installed ${entry.name || entry.id}`,
+    () => ApiService.installCataloguePlugin(entry.id),
+    async () => {
+      await Promise.all([fetchPlugins(), fetchCatalogue(true)]);
+      activeTab.value = 'installed';
+    },
+  ).catch((err) => {
     catalogueError.value = err instanceof Error ? err.message : 'Catalogue install failed';
-  } finally {
-    catalogueBusyId.value = null;
-  }
+  });
 }
 
 async function updateInstalledPlugin(plugin: PluginStatus) {
-  actionBusyId.value = plugin.id;
   error.value = null;
-  try {
-    const res = await ApiService.updatePlugin(plugin.id);
-    if (res.success === false) {
-      throw new Error(res.error || 'Update failed');
-    }
-    flash(`Updated ${plugin.name || plugin.id}`);
-    await Promise.all([fetchPlugins(), catalogueLoaded.value ? fetchCatalogue(true) : Promise.resolve()]);
-  } catch (err) {
+  await runProgressTrackedAction(
+    plugin.id,
+    plugin.name || plugin.id,
+    'update',
+    `Updated ${plugin.name || plugin.id}`,
+    () => ApiService.updatePlugin(plugin.id),
+    async () => {
+      await Promise.all([
+        fetchPlugins(),
+        catalogueLoaded.value ? fetchCatalogue(true) : Promise.resolve(),
+      ]);
+    },
+  ).catch((err) => {
     error.value = err instanceof Error ? err.message : 'Update failed';
-  } finally {
-    actionBusyId.value = null;
-  }
+  });
 }
 
 async function checkUpdateFor(plugin: PluginStatus) {
@@ -534,6 +764,10 @@ async function checkUpdateFor(plugin: PluginStatus) {
 
 onMounted(() => {
   void fetchPlugins();
+});
+
+onBeforeUnmount(() => {
+  closeProgressStream();
 });
 </script>
 
@@ -584,6 +818,56 @@ onMounted(() => {
       {{ statusMessage }}
     </div>
 
+    <!-- Progress dialog -->
+    <div
+      v-if="progressDialog"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      @click.self="dismissProgressDialog"
+    >
+      <div class="glass-card w-full max-w-3xl rounded-[15px] p-5 sm:p-6 shadow-xl">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 class="text-lg font-semibold text-content-heading">{{ progressTitle }}</h3>
+            <p class="mt-1 text-sm text-content-muted">{{ progressPluginId }}</p>
+          </div>
+          <span
+            class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+            :class="progressStateClass(progressState)"
+          >
+            <Spinner v-if="progressState === 'running'" class="w-3.5 h-3.5" />
+            {{ progressStateLabel(progressState) }}
+          </span>
+        </div>
+
+        <div
+          v-if="progressLines.length"
+          class="mt-4 rounded-[12px] border border-stroke-subtle dark:border-white/opacity-light bg-black/opacity-light"
+        >
+          <div class="max-h-80 overflow-auto p-3">
+            <pre class="whitespace-pre-wrap break-words text-xs leading-5 text-content-primary">{{ progressLines.join('\n') }}</pre>
+          </div>
+        </div>
+
+        <div
+          v-if="progressError"
+          class="mt-4 rounded-[12px] border border-accent-red/opacity-medium bg-accent-red/opacity-light p-3 text-sm text-accent-red"
+        >
+          {{ progressError }}
+        </div>
+
+        <div class="mt-4 flex justify-end">
+          <button
+            class="btn-secondary inline-flex items-center gap-2"
+            :disabled="progressState === 'idle' || progressState === 'running'"
+            @click="dismissProgressDialog"
+          >
+            <X class="w-4 h-4" />
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
 
     <!-- Tabs -->
     <div class="flex flex-wrap gap-2">
@@ -608,21 +892,21 @@ onMounted(() => {
       </button>
     </div>
 
-    <!-- Summary cards -->
-    <div v-if="activeTab === 'installed'" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-      <div
-        v-for="card in summaryCards"
-        :key="card.label"
-        class="glass-card rounded-[15px] p-4"
-      >
-        <div class="text-content-secondary dark:text-content-muted text-sm mb-1">{{ card.label }}</div>
-        <div class="text-2xl font-bold text-content-primary">{{ card.value }}</div>
+    <div v-if="activeTab === 'installed'">
+      <!-- Summary cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <div
+          v-for="card in summaryCards"
+          :key="card.label"
+          class="glass-card rounded-[15px] p-4"
+        >
+          <div class="text-content-secondary dark:text-content-muted text-sm mb-1">{{ card.label }}</div>
+          <div class="text-2xl font-bold text-content-primary">{{ card.value }}</div>
+        </div>
       </div>
-    </div>
 
-    <!-- Table card -->
-    <div v-if="activeTab === 'installed'" class="glass-card rounded-[15px] p-4 sm:p-6">
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+      <!-- Table card -->
+      <div class="glass-card rounded-[15px] p-4 sm:p-6">
         <div>
           <h2 class="text-lg font-semibold text-content-heading">Installed plugins</h2>
           <p class="text-sm text-content-muted">
@@ -637,31 +921,30 @@ onMounted(() => {
           class="w-full sm:w-72 rounded-[10px] border border-stroke-subtle dark:border-white/opacity-light bg-transparent px-3 py-2 text-sm text-content-primary placeholder:text-content-muted"
           @input="page = 1"
         />
-      </div>
 
-      <div v-if="loading && !initialLoadComplete" class="flex items-center justify-center py-12">
-        <div class="text-center">
-          <Spinner class="mx-auto mb-4" />
-          <div class="text-content-secondary dark:text-content-muted">Loading plugins…</div>
+        <div v-if="loading && !initialLoadComplete" class="flex items-center justify-center py-12">
+          <div class="text-center">
+            <Spinner class="mx-auto mb-4" />
+            <div class="text-content-secondary dark:text-content-muted">Loading plugins…</div>
+          </div>
         </div>
-      </div>
 
-      <div v-else-if="pagedPlugins.length === 0" class="py-10 text-center text-content-muted">
-        No plugins installed yet. Use <span class="text-content-heading">Install wheel</span> to add one.
-      </div>
+        <div v-else-if="pagedPlugins.length === 0" class="py-10 text-center text-content-muted">
+          No plugins installed yet. Use <span class="text-content-heading">Install wheel</span> to add one.
+        </div>
 
-      <div v-else class="overflow-x-auto rounded-[12px] border border-stroke-subtle dark:border-white/opacity-light">
-        <table class="min-w-full text-sm">
-          <thead class="bg-black/opacity-light dark:bg-white/opacity-subtle">
-            <tr>
-              <th class="px-3 py-2 text-left text-content-muted font-medium">Plugin</th>
-              <th class="px-3 py-2 text-left text-content-muted font-medium">Version</th>
-              <th class="px-3 py-2 text-left text-content-muted font-medium">State</th>
-              <th class="px-3 py-2 text-left text-content-muted font-medium">Type</th>
-              <th class="px-3 py-2 text-right text-content-muted font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+        <div v-else class="overflow-x-auto rounded-[12px] border border-stroke-subtle dark:border-white/opacity-light mt-4">
+          <table class="min-w-full text-sm">
+            <thead class="bg-black/opacity-light dark:bg-white/opacity-subtle">
+              <tr>
+                <th class="px-3 py-2 text-left text-content-muted font-medium">Plugin</th>
+                <th class="px-3 py-2 text-left text-content-muted font-medium">Version</th>
+                <th class="px-3 py-2 text-left text-content-muted font-medium">State</th>
+                <th class="px-3 py-2 text-left text-content-muted font-medium">Type</th>
+                <th class="px-3 py-2 text-right text-content-muted font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
             <tr
               v-for="plugin in pagedPlugins"
               :key="plugin.id"
@@ -696,16 +979,16 @@ onMounted(() => {
                   {{ displayPluginState(plugin) }}
                 </span>
                 <div class="mt-1 text-xs text-content-muted">
-                  <template v-if="plugin.has_runtime">
+                  <div v-if="plugin.has_runtime">
                     {{ plugin.enabled ? 'Enabled' : 'Disabled' }}
                     <span v-if="plugin.pid"> · pid {{ plugin.pid }}</span>
-                  </template>
-                  <template v-else-if="plugin.has_ui">
+                  </div>
+                  <div v-else-if="plugin.has_ui">
                     {{ plugin.enabled ? 'No background service' : 'UI disabled' }}
-                  </template>
-                  <template v-else>
+                  </div>
+                  <div v-else>
                     {{ plugin.enabled ? 'Enabled' : 'Disabled' }}
-                  </template>
+                  </div>
                 </div>
               </td>
               <td class="px-3 py-3 align-top text-content-muted">
@@ -796,10 +1079,10 @@ onMounted(() => {
                 </div>
               </td>
             </tr>
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </div>
-
       <!-- Pagination -->
       <div
         v-if="filteredPlugins.length > PAGE_SIZE"
@@ -852,6 +1135,10 @@ onMounted(() => {
 
       <div v-else-if="catalogue.length === 0" class="py-10 text-center text-content-muted">
         Catalogue is empty.
+      </div>
+
+      <div v-else-if="catalogueAvailable.length === 0" class="py-10 text-center text-content-muted">
+        All catalogue plugins are already installed.
       </div>
 
       <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -942,7 +1229,7 @@ onMounted(() => {
                   @click="updateInstalledPlugin({ id: entry.id, name: entry.name })"
                 >
                   <Download class="w-4 h-4" />
-                  Update
+                  {{ actionBusyId === entry.id ? 'Updating…' : 'Update' }}
                 </button>
                 <span v-else class="text-sm text-accent-green">Installed</span>
               </div>
@@ -1120,7 +1407,7 @@ onMounted(() => {
           v-model="configText"
           spellcheck="false"
           class="w-full min-h-[280px] flex-1 rounded-[12px] border border-stroke-subtle dark:border-white/opacity-light bg-black/opacity-light dark:bg-black/opacity-medium p-3 font-mono text-xs text-content-heading"
-        />
+        ></textarea>
 
         <p v-if="configError" class="mt-3 text-sm text-accent-red">{{ configError }}</p>
 

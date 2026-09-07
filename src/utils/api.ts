@@ -1576,6 +1576,22 @@ export class ApiService {
     }
   }
 
+  static openPluginProgressStream(
+    id: string,
+    since = 0,
+    fresh = true,
+  ): EventSource {
+    const params = new URLSearchParams({ id, since: String(since) });
+    if (fresh) {
+      params.set('fresh', '1');
+    }
+    const token = getToken();
+    if (token) {
+      params.set('token', token);
+    }
+    return new EventSource(`${API_BASE_URL}/plugins/progress?${params.toString()}`);
+  }
+
   /**
    * Handle API errors consistently
    */
