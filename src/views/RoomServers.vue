@@ -7,7 +7,10 @@ import ConfirmDialog from '@/components/modals/ConfirmDialog.vue';
 import MessageDialog from '@/components/modals/MessageDialog.vue';
 import RestartModal from '@/components/modals/RestartModal.vue';
 import LocationPicker from '@/components/modals/LocationPicker.vue';
+import MeshCoreQrModal from '@/components/modals/MeshCoreQrModal.vue';
 import Spinner from '@/components/ui/Spinner.vue';
+import { buildMeshCoreAddContactUrl, isValidMeshCorePublicKey } from '@/utils/meshcoreQr';
+import { QrCode } from '@lucide/vue';
 
 defineOptions({ name: 'RoomServersView' });
 
@@ -51,6 +54,10 @@ const messageDialogContent = ref({
   message: '',
   variant: 'success' as 'success' | 'error' | 'info',
 });
+const showQrModal = ref(false);
+const qrModalTitle = ref('');
+const qrModalSubtitle = ref('');
+const qrModalValue = ref('');
 
 // Room Messages Dialog states
 const showMessagesDialog = ref(false);
@@ -439,6 +446,28 @@ function getClientSession(authorPubkey: string) {
   return session;
 }
 
+function openRoomServerQr(identity: any) {
+  const publicKey = identity?.public_key;
+  if (!isValidMeshCorePublicKey(publicKey)) {
+    showMessage('Room server public key is missing or invalid for QR export.', 'error');
+    return;
+  }
+
+  const contactName = identity?.settings?.node_name || identity?.name || 'Room Server';
+  qrModalTitle.value = `Room Server QR: ${contactName}`;
+  qrModalSubtitle.value = 'Scan in MeshCore app to add as a room server contact (type=3).';
+  qrModalValue.value = buildMeshCoreAddContactUrl({
+    name: contactName,
+    publicKey,
+    type: 3,
+  });
+  showQrModal.value = true;
+}
+
+function closeQrModal() {
+  showQrModal.value = false;
+}
+
 async function removeClient(publicKey: string, identityHash?: string) {
   if (!confirm('Are you sure you want to remove this client from the ACL?')) {
     return;
@@ -736,6 +765,25 @@ async function removeClient(publicKey: string, identityHash?: string) {
                     </span>
                   </span>
                 </div>
+              </div>
+
+              <div class="text-xs text-content-muted">
+                <span class="text-content-muted">Public Key:</span>
+                <span
+                  v-if="identity.public_key"
+                  class="ml-2 font-mono text-content-primary/opacity-heavy break-all"
+                  >{{ identity.public_key }}</span
+                >
+                <span v-else class="ml-2 text-content-muted">—</span>
+                <button
+                  class="ml-2 inline-flex items-center gap-1.5 rounded-[8px] border border-stroke-subtle dark:border-stroke/opacity-medium px-2 py-1 text-[11px] text-content-secondary hover:text-content-primary hover:border-primary/opacity-heavy transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="!isValidMeshCorePublicKey(identity.public_key)"
+                  @click="openRoomServerQr(identity)"
+                  title="Show MeshCore add-contact QR"
+                >
+                  <QrCode class="h-3.5 w-3.5" />
+                  <span>QR</span>
+                </button>
               </div>
 
               <div
@@ -1303,6 +1351,14 @@ async function removeClient(publicKey: string, identityHash?: string) {
   <RestartModal
     v-model="showRestartModal"
     message="Room server settings have been saved. A service restart is required for the changes to take effect."
+  />
+
+  <MeshCoreQrModal
+    :is-open="showQrModal"
+    :title="qrModalTitle"
+    :subtitle="qrModalSubtitle"
+    :value="qrModalValue"
+    @close="closeQrModal"
   />
 
 

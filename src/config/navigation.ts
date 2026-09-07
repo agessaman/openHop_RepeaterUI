@@ -2,7 +2,7 @@ import type { Component } from 'vue'
 import {
   LayoutDashboard, Megaphone, Activity, Cable, MapPin, Gauge,
   BarChart2, Server, Cpu, Settings, Antenna, Terminal,
-  Users2, ScrollText, HelpCircle,
+  Users2, ScrollText, HelpCircle, Puzzle,
   ShieldCheck, Wrench, Radio, Timer, Percent, Globe, KeyRound, Eye, Scale,
   DatabaseBackup, Database, MemoryStick, Building2, Bot, Repeat2,
 } from '@lucide/vue'
@@ -106,6 +106,7 @@ export const navigationItems: NavItemConfig[] = [
         ],
       },
       { id: 'system-stats', label: 'System Stats', icon: Cpu,      route: '/system-stats' },
+      { id: 'plugins',      label: 'Plugins',      icon: Puzzle,   route: '/plugins' },
       { id: 'terminal',     label: 'Terminal',     icon: Terminal,  route: '/terminal' },
     ],
   },
