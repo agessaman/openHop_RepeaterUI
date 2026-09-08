@@ -37,7 +37,6 @@ const contactTypeColors = {
 const advertsByType = computed(() => neighborStore.advertsByType);
 const loading = computed(() => neighborStore.isLoading);
 const error = ref<string | null>(null);
-const cartoApiKey = computed(() => systemStore.stats?.config?.web?.carto_api_key ?? '');
 
 // Hours dropdown
 const selectedHours = ref(getPreference('neighbors_selectedHours', neighborStore.currentHours));
@@ -161,7 +160,7 @@ const selectedScopesPubkey = computed(
 
 const scopeRecordForModal = computed(() =>
   selectedScopesPubkey.value
-    ? neighborStore.scopesByPubkey[selectedScopesPubkey.value] ?? null
+    ? (neighborStore.scopesByPubkey[selectedScopesPubkey.value] ?? null)
     : null,
 );
 
@@ -170,7 +169,7 @@ const scopesQueryLoading = computed(
 );
 
 const scopesQueryError = computed(() =>
-  selectedScopesPubkey.value ? scopesQueryErrors.value[selectedScopesPubkey.value] ?? null : null,
+  selectedScopesPubkey.value ? (scopesQueryErrors.value[selectedScopesPubkey.value] ?? null) : null,
 );
 
 // Convert Advert to Neighbor interface for modal
@@ -703,7 +702,6 @@ onUnmounted(() => {
         :base-latitude="baseLatitude"
         :base-longitude="baseLongitude"
         :stats-loading="statsLoading"
-        :carto-api-key="cartoApiKey"
         :show-legend="showMapLegend"
         @update:show-legend="showMapLegend = $event"
       />
@@ -716,12 +714,7 @@ onUnmounted(() => {
               @click="startDiscovery"
               class="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-accent-cyan/opacity-light text-accent-cyan border border-accent-cyan/opacity-medium hover:bg-accent-cyan/opacity-medium transition-colors shadow-sm"
             >
-              <svg
-                class="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -1001,9 +994,7 @@ onUnmounted(() => {
             />
           </svg>
         </div>
-        <h3 class="text-content-primary text-lg font-medium mb-2">
-          No Neighbors Found
-        </h3>
+        <h3 class="text-content-primary text-lg font-medium mb-2">No Neighbors Found</h3>
         <p class="text-content-secondary dark:text-content-muted">
           No mesh neighbors have been discovered in your area yet.
         </p>

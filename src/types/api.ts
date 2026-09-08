@@ -276,7 +276,6 @@ export interface SystemStats {
       cors_enabled?: boolean;
       web_path?: string | null;
       site_name?: string;
-      carto_api_key?: string;
     };
     mqtt_brokers?: {
       iata_code?: string;
@@ -314,7 +313,7 @@ export interface SystemStats {
         tls?: {
           enabled?: boolean;
           insecure?: boolean;
-        }
+        };
       }>;
     };
   };

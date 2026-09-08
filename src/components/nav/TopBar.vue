@@ -545,7 +545,7 @@ const toggleMobileSidebar = () => {
                   Install Update
                 </button>
                 <a
-                  href="https://github.com/openhop-dev/openhop-repeater"
+                  href="https://github.com/openhop-dev/openhop_repeater"
                   target="_blank"
                   class="text-xs text-content-muted hover:text-content-secondary underline"
                 >
