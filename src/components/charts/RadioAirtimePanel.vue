@@ -58,6 +58,66 @@ const getChartChrome = () => ({
 
 const chartRef = ref<HTMLCanvasElement | null>(null);
 
+/** Plot area of the last paint, so pointer positions map back onto samples. */
+const geometry = ref<{
+  leftMargin: number;
+  padding: number;
+  chartWidth: number;
+  chartHeight: number;
+  height: number;
+} | null>(null);
+
+const hoverIndex = ref<number | null>(null);
+const tooltipClientX = ref(0);
+const tooltipClientY = ref(0);
+const tooltipFlipLeft = ref(false);
+
+const hoveredSample = computed(() =>
+  hoverIndex.value === null ? null : (props.samples[hoverIndex.value] ?? null),
+);
+
+const hoveredTime = computed(() => {
+  if (!hoveredSample.value) return '';
+  return new Date(hoveredSample.value.timestamp * 1000).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+});
+
+const tooltipStyle = computed(() => ({
+  position: 'fixed' as const,
+  top: `${tooltipClientY.value + 14}px`,
+  left: tooltipFlipLeft.value
+    ? `${tooltipClientX.value - 150}px`
+    : `${tooltipClientX.value + 14}px`,
+  zIndex: 9999,
+}));
+
+const isInteractive = computed(() => !props.isLoading && !props.error && props.samples.length > 1);
+
+const onPointerMove = (event: PointerEvent) => {
+  const canvas = chartRef.value;
+  const plot = geometry.value;
+  if (!canvas || !plot || !isInteractive.value) return;
+  // Touch has no hover to end, so a tap would leave the readout stuck open and
+  // a drag would fight the page scroll. Hovering pointers only.
+  if (event.pointerType && event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+
+  const rect = canvas.getBoundingClientRect();
+  const fraction = (event.clientX - rect.left - plot.leftMargin) / plot.chartWidth;
+  const index = Math.round(Math.max(0, Math.min(1, fraction)) * (props.samples.length - 1));
+
+  hoverIndex.value = index;
+  tooltipClientX.value = event.clientX;
+  tooltipClientY.value = event.clientY;
+  tooltipFlipLeft.value = event.clientX > window.innerWidth - 170;
+};
+
+const onPointerLeave = () => {
+  hoverIndex.value = null;
+};
+
 const hasHeading = computed(() => Boolean(props.radioId));
 const hasActivity = computed(() => props.samples.some((s) => s.rxUtil > 0 || s.txUtil > 0));
 const canvasLabel = computed(() =>
@@ -108,6 +168,7 @@ const drawChart = () => {
 
   const chartWidth = width - leftMargin - padding;
   const chartHeight = height - padding * 2;
+  geometry.value = { leftMargin, padding, chartWidth, chartHeight, height };
   const displayRange = props.yAxisMax || 1;
   // Each panel scales to its own traffic, so the axis can be a fraction of a
   // percent; fixed whole-number labels would collapse to a column of zeros.
@@ -155,11 +216,48 @@ const drawChart = () => {
 
   drawSeries('rxUtil', CHART_COLORS.rx);
   drawSeries('txUtil', CHART_COLORS.tx);
+
+  const hovered = hoverIndex.value;
+  if (hovered === null || hovered < 0 || hovered >= samples.length) return;
+
+  // Readout crosshair: the axis has no time labels, so the only way to ask
+  // "when was that peak" is to point at it.
+  const x = leftMargin + (chartWidth * hovered) / (samples.length - 1);
+  ctx.strokeStyle = chrome.axisLabel;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, padding);
+  ctx.lineTo(x, height - padding);
+  ctx.stroke();
+
+  for (const [key, color] of [
+    ['rxUtil', CHART_COLORS.rx],
+    ['txUtil', CHART_COLORS.tx],
+  ] as const) {
+    const value = Math.min(samples[hovered][key], displayRange);
+    const y = height - padding - (value / displayRange) * chartHeight;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
 };
 
 watch(
   () => [props.samples, props.yAxisMax, props.isLoading] as const,
   () => nextTick(() => drawChart()),
+);
+
+// Redraw for the crosshair alone: repainting ~480 points costs less than
+// keeping a second overlay canvas in sync with the series.
+watch(hoverIndex, () => drawChart());
+
+// A refresh can shorten the series out from under a held pointer.
+watch(
+  () => props.samples.length,
+  () => {
+    hoverIndex.value = null;
+  },
 );
 
 onMounted(() => {
@@ -222,17 +320,42 @@ defineExpose({ drawChart });
       <canvas
         ref="chartRef"
         class="absolute inset-0 w-full h-full"
+        :class="isInteractive ? 'cursor-crosshair' : ''"
         role="img"
         :aria-label="canvasLabel"
+        @pointermove="onPointerMove"
+        @pointerleave="onPointerLeave"
+        @pointercancel="onPointerLeave"
       ></canvas>
       <p class="sr-only">{{ summary }}</p>
       <p
         v-if="!isLoading && !error && !hasActivity"
-        class="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-content-muted"
+        class="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-content-muted pointer-events-none"
       >
         {{ emptyMessage ?? 'No activity in the last 24 hours.' }}
       </p>
     </ChartCard>
+
+    <!-- Teleported so the panel's own bounds cannot clip it -->
+    <Teleport to="body">
+      <div
+        v-if="hoveredSample"
+        class="pointer-events-none rounded border border-stroke-subtle bg-surface-elevated px-2.5 py-2 text-sm leading-snug whitespace-nowrap text-content-primary shadow-lg dark:border-white/opacity-medium dark:bg-surface-elevated"
+        :style="tooltipStyle"
+      >
+        <div class="text-content-secondary dark:text-content-muted text-xs">
+          <span v-if="radioId">{{ radioId }} · </span>{{ hoveredTime }}
+        </div>
+        <div class="mt-1 flex items-center gap-2">
+          <span class="h-2 w-3 rounded bg-accent-purple"></span>
+          <span>Rx {{ hoveredSample.rxUtil.toFixed(2) }}%</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="h-2 w-3 rounded bg-accent-red"></span>
+          <span>Tx {{ hoveredSample.txUtil.toFixed(2) }}%</span>
+        </div>
+      </div>
+    </Teleport>
 
     <slot name="summary" />
   </section>

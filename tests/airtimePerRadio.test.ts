@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount, flushPromises } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 
 vi.mock('@/utils/streamingFetch', () => ({
@@ -23,6 +23,7 @@ import {
   toRadioPanels,
   type AirtimeBucket,
   type SeriesGrid,
+  type UtilSample,
 } from '@/composables/useAirtimeSeries';
 
 const mockedGet = vi.mocked(streamingGet);
@@ -526,5 +527,158 @@ describe('bucket grid alignment', () => {
     expect(samples[0].rxUtil).toBeCloseTo(50);
     expect(samples[1440].timestamp).toBe(last.timestamp);
     expect(samples[1440].rxUtil).toBeCloseTo(10);
+  });
+});
+
+describe('RadioAirtimePanel crosshair', () => {
+  const CANVAS_W = 500;
+  const CANVAS_H = 200;
+  const LEFT_MARGIN = 45; // must match the panel's plot geometry
+  const PADDING = 20;
+  const CHART_W = CANVAS_W - LEFT_MARGIN - PADDING;
+
+  const readout: UtilSample[] = [
+    { timestamp: 1_700_000_000, rxUtil: 1.5, txUtil: 0.25 },
+    { timestamp: 1_700_000_060, rxUtil: 4, txUtil: 0.5 },
+    { timestamp: 1_700_000_120, rxUtil: 12.75, txUtil: 3.5 },
+    { timestamp: 1_700_000_180, rxUtil: 8, txUtil: 1 },
+    { timestamp: 1_700_000_240, rxUtil: 2, txUtil: 0.125 },
+  ];
+
+  const clockLabel = (timestamp: number) =>
+    new Date(timestamp * 1000).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+
+  /** jsdom has no canvas; record-nothing context plus fixed element bounds. */
+  function stubCanvasGeometry() {
+    const ctx = new Proxy({} as CanvasRenderingContext2D, {
+      get: () => vi.fn(),
+      set: () => true,
+    });
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => ctx) as never;
+    Element.prototype.getBoundingClientRect = vi.fn(
+      () =>
+        ({
+          left: 0,
+          top: 0,
+          right: CANVAS_W,
+          bottom: CANVAS_H,
+          width: CANVAS_W,
+          height: CANVAS_H,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        }) as DOMRect,
+    ) as never;
+  }
+
+  async function mountPanel(props: Record<string, unknown> = {}) {
+    stubCanvasGeometry();
+    const wrapper = mount(RadioAirtimePanel, {
+      props: {
+        radioId: 'link',
+        samples: readout,
+        yAxisMax: 15,
+        isLoading: false,
+        ...props,
+      },
+      attachTo: document.body,
+    });
+    (wrapper.vm as unknown as { drawChart: () => void }).drawChart();
+    await flushPromises();
+    return wrapper;
+  }
+
+  /** clientX that lands on `index`, given the plot's left margin and width. */
+  const xForIndex = (index: number) => LEFT_MARGIN + (CHART_W * index) / (readout.length - 1);
+
+  function tooltip() {
+    return document.body.querySelector('[style*="position: fixed"]');
+  }
+
+  /** vue-test-utils cannot set clientX on a synthesised pointer event. */
+  async function pointerMove(wrapper: VueWrapper, clientX: number, clientY = 100) {
+    wrapper
+      .find('canvas')
+      .element.dispatchEvent(new MouseEvent('pointermove', { clientX, clientY, bubbles: true }));
+    await flushPromises();
+  }
+
+  async function pointerLeave(wrapper: VueWrapper) {
+    wrapper.find('canvas').element.dispatchEvent(new MouseEvent('pointerleave'));
+    await flushPromises();
+  }
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('reads out the time, RX and TX of the sample under the pointer', async () => {
+    const wrapper = await mountPanel();
+
+    await pointerMove(wrapper, xForIndex(2));
+
+    const text = tooltip()?.textContent ?? '';
+    expect(text).toContain(clockLabel(readout[2].timestamp));
+    expect(text).toContain('Rx 12.75%');
+    expect(text).toContain('Tx 3.50%');
+    expect(text).toContain('link'); // which panel the readout belongs to
+  });
+
+  it('snaps to the nearest sample across the plot', async () => {
+    const wrapper = await mountPanel();
+
+    await pointerMove(wrapper, xForIndex(0));
+    expect(tooltip()?.textContent).toContain('Rx 1.50%');
+
+    await pointerMove(wrapper, xForIndex(4));
+    expect(tooltip()?.textContent).toContain('Rx 2.00%');
+
+    // Past the right edge of the plot, still the last sample rather than none.
+    await pointerMove(wrapper, CANVAS_W + 50);
+    expect(tooltip()?.textContent).toContain('Rx 2.00%');
+  });
+
+  it('ignores touch, which has no hover to close the readout with', async () => {
+    const wrapper = await mountPanel();
+
+    wrapper.find('canvas').element.dispatchEvent(
+      new PointerEvent('pointermove', {
+        clientX: xForIndex(2),
+        clientY: 100,
+        bubbles: true,
+        pointerType: 'touch',
+      }),
+    );
+    await flushPromises();
+
+    expect(tooltip()).toBeNull();
+  });
+
+  it('clears the readout when the pointer leaves', async () => {
+    const wrapper = await mountPanel();
+
+    await pointerMove(wrapper, xForIndex(1));
+    expect(tooltip()).not.toBeNull();
+
+    await pointerLeave(wrapper);
+    expect(tooltip()).toBeNull();
+  });
+
+  it('stays inert while loading, on error, and with nothing to read', async () => {
+    for (const props of [
+      { isLoading: true },
+      { error: 'Stream stalled' },
+      { samples: [readout[0]] },
+    ]) {
+      const wrapper = await mountPanel(props);
+      await pointerMove(wrapper, xForIndex(2));
+      expect(tooltip()).toBeNull();
+      expect(wrapper.find('canvas').classes()).not.toContain('cursor-crosshair');
+      wrapper.unmount();
+    }
   });
 });
