@@ -192,13 +192,25 @@ export const usePacketStore = defineStore('packets', () => {
 
 
   // Append a live WS reading into noiseFloorHistory so the sparkline updates immediately.
-  function appendNoiseFloorReading(dbm: number) {
+  // The daemon samples every radio but publishes only the default one's figure, so
+  // callers on a multi-radio node pass that radio's id: an unattributed row would
+  // otherwise read as a series of its own next to the radios that have names.
+  function appendNoiseFloorReading(dbm: number, radioId: string | null = null) {
     if (!dbm) return;
     const now = Math.floor(Date.now() / 1000);
     // Avoid duplicating if an HTTP poll just added the same second's reading.
     const last = noiseFloorHistory.value[noiseFloorHistory.value.length - 1];
-    if (last && Math.abs(last.timestamp - now) < 2 && last.noise_floor_dbm === dbm) return;
-    noiseFloorHistory.value = [...noiseFloorHistory.value, { timestamp: now, noise_floor_dbm: dbm }];
+    if (
+      last &&
+      Math.abs(last.timestamp - now) < 2 &&
+      last.noise_floor_dbm === dbm &&
+      (last.radio_id ?? null) === radioId
+    )
+      return;
+    noiseFloorHistory.value = [
+      ...noiseFloorHistory.value,
+      { timestamp: now, noise_floor_dbm: dbm, radio_id: radioId },
+    ];
   }
 
   async function fetchPacketStats(params: PacketStatsParams = { hours: 24 }) {

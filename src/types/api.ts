@@ -167,6 +167,8 @@ export interface NeighborLinkHistoryPayload {
 export interface NoiseFloorHistory {
   timestamp: number;
   noise_floor_dbm: number;
+  /** Present only on a node with two or more radios; null means unattributed. */
+  radio_id?: string | null;
 }
 
 export interface NoiseFloorStats {
