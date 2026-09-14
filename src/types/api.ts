@@ -205,6 +205,8 @@ export interface SystemStats {
   radio_error?: string;
   last_packet_time?: number;
   noise_floor_dbm?: number;
+  /** The other radios' latest samples; present only on a node with two or more. */
+  noise_floor_radios?: Array<{ radio_id: string; noise_floor_dbm: number }>;
   utilization_percent?: number;
   /** Carried by the WS vitals broadcast; over HTTP the mode lives in config. */
   mode?: 'forward' | 'monitor' | 'no_tx';

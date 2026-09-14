@@ -11,15 +11,41 @@ const packetStore = usePacketStore()
 const systemStore = useSystemStore()
 const { profiles, isMultiRadio, defaultRadioId } = useRadioProfiles()
 
-// The websocket carries one figure, the default radio's: the daemon samples
-// every radio but publishes only the first. Stamp it so a bridge does not grow
-// an unattributed series beside the radios that have names.
+// The scalar is the default radio's figure. On a single-radio node it is the
+// whole story; on a bridge it is only a fallback for a backend too old to send
+// noise_floor_radios, and is stamped so the curve does not read as a series of
+// its own beside the radios that have names.
 watch(
   () => systemStore.noiseFloorDbm,
   (dbm) => {
     if (dbm === null) return
-    packetStore.appendNoiseFloorReading(dbm, isMultiRadio.value ? defaultRadioId.value : null)
+    if (!isMultiRadio.value) {
+      packetStore.appendNoiseFloorReading(dbm, null)
+      return
+    }
+    if (Object.keys(systemStore.noiseFloorByRadio).length) return
+    packetStore.appendNoiseFloorReading(dbm, defaultRadioId.value)
   },
+  // Immediate, so a sidebar mounted after the first stats poll draws the
+  // reading it already has instead of waiting for the figure to move.
+  { immediate: true },
+)
+
+// Every radio's own sample, so a bridge's curves all advance on the same beat
+// rather than the non-default ones waiting on the five-minute history refetch.
+// The map is rebuilt on each stats poll, so only a changed figure is appended —
+// what the scalar watch above does by only firing on a change.
+const lastAppended = new Map<string, number>()
+watch(
+  () => systemStore.noiseFloorByRadio,
+  (byRadio) => {
+    for (const [radioId, dbm] of Object.entries(byRadio)) {
+      if (lastAppended.get(radioId) === dbm) continue
+      lastAppended.set(radioId, dbm)
+      packetStore.appendNoiseFloorReading(dbm, radioId)
+    }
+  },
+  { immediate: true },
 )
 
 const cssVar = (name: string, fallback: string): string => {
@@ -69,21 +95,22 @@ const series = computed<NoiseSeries[]>(() => {
   }
 
   const palette = radioPalette()
+  const live = systemStore.noiseFloorByRadio
   const entries: NoiseSeries[] = []
   profiles.value.forEach((radio, index) => {
     const data = readings
       .filter((p) => p.radio_id === radio.radioId)
       .map((p) => ({ value: p.noise_floor_dbm, timestamp: p.timestamp }))
-    // A radio with nothing to show is left out rather than drawn empty. Its own
-    // last reading is the figure: the live websocket value describes the default
-    // radio, so the others would be wrong to borrow it.
+    // A radio with nothing to show is left out rather than drawn empty. The
+    // figure is that radio's own: the scalar describes the default radio, so
+    // the others would be wrong to borrow it.
     if (!data.length) return
     entries.push({
       key: radio.radioId,
       label: radio.radioId,
       color: palette[index % palette.length],
       data,
-      current: data[data.length - 1].value,
+      current: live[radio.radioId] ?? data[data.length - 1].value,
     })
   })
   return entries
