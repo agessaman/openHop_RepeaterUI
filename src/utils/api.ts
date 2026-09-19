@@ -1612,7 +1612,7 @@ export class ApiService {
       }>;
     }>
   > {
-    return this.get('/sensors/types');
+    return this.get('/sensors_types');
   }
 
   static async getSensorConfig(): Promise<
@@ -1629,7 +1629,7 @@ export class ApiService {
       }>;
     }>
   > {
-    return this.get('/sensors/config');
+    return this.get('/sensors_config');
   }
 
   static async updateSensorConfig(data: {
@@ -1650,7 +1650,7 @@ export class ApiService {
       message: string;
     }>
   > {
-    return this.post('/sensors/config_update', data);
+    return this.post('/sensors_config_update', data);
   }
 
   static async readSensors(): Promise<
@@ -1665,7 +1665,7 @@ export class ApiService {
       };
     }>
   > {
-    return this.post('/sensors/read');
+    return this.post('/sensors_read');
   }
 
   /**
