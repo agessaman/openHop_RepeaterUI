@@ -1650,7 +1650,7 @@ export class ApiService {
       message: string;
     }>
   > {
-    return this.post('/sensors/config', data);
+    return this.post('/sensors/config_update', data);
   }
 
   static async readSensors(): Promise<
