@@ -1622,6 +1622,7 @@ export class ApiService {
       auto_install_packages: boolean;
       definitions: Array<{
         name: string;
+        _original_name?: string;
         type: string;
         enabled: boolean;
         auto_install_packages?: boolean;
@@ -1638,6 +1639,7 @@ export class ApiService {
     auto_install_packages: boolean;
     definitions: Array<{
       name: string;
+      _original_name?: string;
       type: string;
       enabled: boolean;
       auto_install_packages?: boolean;

@@ -21,6 +21,7 @@ interface SensorType {
 
 interface SensorDefinition {
   name: string;
+  _original_name?: string;
   type: string;
   enabled: boolean;
   auto_install_packages?: boolean;
@@ -59,12 +60,13 @@ const selectedType = computed(() =>
   sensorTypes.value.find((t) => t.type === selectedNewType.value),
 );
 
-const availableTypes = computed(() =>
-  sensorTypes.value.filter((t) => {
-    if (!draftConfig.value) return true;
-    return !draftConfig.value.definitions.some((d) => d.type === t.type);
-  }),
-);
+// Mask sensitive values even when talking to an older backend.
+const displaySettings = (settings: Record<string, unknown>): string =>
+  JSON.stringify(settings, (key, value) =>
+    key.toLowerCase() === 'password' && value ? '*****' : value,
+  );
+
+const availableTypes = computed(() => sensorTypes.value.filter((t) => t.type !== 'pymc_modem'));
 
 // Load sensor types and config
 async function loadData() {
@@ -106,18 +108,6 @@ function cancelEditing() {
   editDraft.value = null;
 }
 
-function saveDraft() {
-  if (!draftConfig.value) return;
-  config.value = JSON.parse(JSON.stringify(draftConfig.value));
-  isEditing.value = false;
-  showAddForm.value = false;
-  selectedNewType.value = '';
-  newSensorName.value = '';
-  newSensorSettings.value = {};
-  editingIndex.value = null;
-  editDraft.value = null;
-}
-
 // Add sensor
 function beginAddSensor() {
   showAddForm.value = true;
@@ -144,6 +134,7 @@ function onTypeSelected() {
 
 function canAddSensor(): boolean {
   if (!selectedNewType.value || !newSensorName.value.trim()) return false;
+  if (draftConfig.value?.definitions.some((d) => d.name === newSensorName.value.trim())) return false;
   const type = selectedType.value;
   if (!type) return false;
   // Validate required settings
@@ -157,7 +148,7 @@ function canAddSensor(): boolean {
 }
 
 function addSensor() {
-  if (!draftConfig.value || !selectedType.value) return;
+  if (!draftConfig.value || !selectedType.value || !canAddSensor()) return;
   const def: SensorDefinition = {
     name: newSensorName.value.trim(),
     type: selectedNewType.value,
@@ -209,8 +200,10 @@ async function saveAll(): Promise<boolean> {
   try {
     const result = await ApiService.updateSensorConfig(draftConfig.value);
     if (result.success && result.data) {
-      config.value = JSON.parse(JSON.stringify(draftConfig.value));
       isEditing.value = false;
+      // Reload server-issued origins and masked passwords. Reusing the old
+      // draft after a rename would point at a no-longer-existing identity.
+      await loadData();
       showRestartModal.value = result.data.restart_required;
       return true;
     }
@@ -280,7 +273,7 @@ watch(
         </template>
         <template v-else>
           <button
-            @click="saveDraft"
+            @click="cancelEditing"
             class="cfg-btn-secondary"
           >
             Discard
@@ -362,7 +355,7 @@ watch(
               </span>
             </div>
             <div class="flex items-center gap-2 text-xs text-content-muted">
-              <span class="font-mono">{{ JSON.stringify(def.settings) }}</span>
+              <span class="font-mono">{{ displaySettings(def.settings) }}</span>
             </div>
           </div>
         </div>
@@ -461,7 +454,7 @@ watch(
                 </label>
                 <input
                   v-model="newSensorSettings[setting.key]"
-                  :type="setting.type === 'integer' || setting.type === 'number' ? 'number' : 'text'"
+                  :type="setting.key.toLowerCase() === 'password' ? 'password' : setting.type === 'integer' || setting.type === 'number' ? 'number' : 'text'"
                   :step="setting.type === 'number' ? '0.01' : '1'"
                   :min="setting.type === 'integer' || setting.type === 'number' ? '-999999' : undefined"
                   :max="setting.type === 'integer' || setting.type === 'number' ? '999999' : undefined"
@@ -532,7 +525,7 @@ watch(
                 </div>
               </div>
               <div class="mt-2 text-xs text-content-muted font-mono break-all">
-                Settings: {{ JSON.stringify(def.settings) }}
+                Settings: {{ displaySettings(def.settings) }}
               </div>
             </div>
 
@@ -572,7 +565,7 @@ watch(
                   <label class="text-xs text-content-muted sm:w-48">{{ key }}:</label>
                   <input
                     v-model="editDraft!.settings[key]"
-                    :type="['integer', 'number'].includes(String(value)) ? 'number' : 'text'"
+                    :type="key.toLowerCase() === 'password' ? 'password' : 'text'"
                     class="cfg-input flex-1"
                   />
                 </div>
