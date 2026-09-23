@@ -7,6 +7,7 @@ import RestartModal from '@/components/modals/RestartModal.vue';
 import UnsavedChangesModal from '@/components/ui/UnsavedChangesModal.vue';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { useMultiRadioConfig } from '@/composables/useMultiRadioConfig';
+import RadioFrontendSettings from '@/components/configuration/RadioFrontendSettings.vue';
 import {
   normalizeModemHardwareOptions,
   normalizeModemTransportConfig,
@@ -1320,7 +1321,16 @@ function applyPayloadToEntry(
   delete updated.modem_tcp;
   if (payload.sx1262) updated.sx1262 = payload.sx1262;
   if (payload.ch341) updated.ch341 = payload.ch341;
-  if (payload.kiss) updated.kiss = payload.kiss;
+  if (payload.kiss) {
+    // The form only edits port/baud; keep the entry's other KISS tuning (CSMA,
+    // AGC/FEM front end) when the radio stays a KISS modem.
+    const previous = entry.kiss;
+    const keep =
+      normalizeRadioType(entry.radio_type) === 'kiss' && previous && typeof previous === 'object'
+        ? (previous as Record<string, unknown>)
+        : {};
+    updated.kiss = { ...keep, ...(payload.kiss as Record<string, unknown>) };
+  }
   if (payload.modem_usb) updated.modem_usb = payload.modem_usb;
   if (payload.modem_tcp) updated.modem_tcp = payload.modem_tcp;
   // Air settings: prefer form payload.radio, else keep existing entry.radio.
@@ -2508,5 +2518,10 @@ watch(
         Switching hardware saves immediately and requires a service restart to apply.
       </div>
     </div>
+
+    <RadioFrontendSettings
+      v-if="!isEditing && !isDraftingMultiRadio"
+      :default-radio-id="isMultiRadio ? defaultRadioId : undefined"
+    />
   </div>
 </template>
