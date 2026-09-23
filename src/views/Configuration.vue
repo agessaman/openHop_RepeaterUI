@@ -23,7 +23,7 @@ import Spinner from '@/components/ui/Spinner.vue';
 
 defineOptions({ name: 'ConfigurationView' });
 
-type EditableTabRef = ComponentPublicInstance & { requestLeave: (cb: () => void) => void; isEditing: Ref<boolean> | boolean };
+type EditableTabRef = ComponentPublicInstance & { requestLeave: (cb: () => void, cancel?: () => void) => void; isEditing: Ref<boolean> | boolean };
 
 const route = useRoute();
 const systemStore = useSystemStore();
@@ -67,10 +67,10 @@ function isCurrentTabEditing(): boolean {
   return typeof editing === 'boolean' ? editing : editing.value;
 }
 
-function requestCurrentTabLeave(callback: () => void) {
+function requestCurrentTabLeave(callback: () => void, cancel?: () => void) {
   const ref = editableTabRefs[activeTab.value]?.value;
   if (ref) {
-    ref.requestLeave(callback);
+    ref.requestLeave(callback, cancel);
   } else {
     callback();
   }
@@ -104,7 +104,7 @@ onBeforeRouteUpdate((to, _from, next) => {
     requestCurrentTabLeave(() => {
       activeTab.value = incoming;
       next();
-    });
+    }, () => next(false));
     // Don't call next() — requestCurrentTabLeave will do it after confirmation.
     return;
   }
@@ -202,7 +202,7 @@ onMounted(async () => {
         <BackupRestore          v-if="activeTab === 'backup'"                               key="backup-restore" />
         <DatabaseManagement     v-if="activeTab === 'database'"                             key="database-management" />
         <MemoryDebug            v-if="activeTab === 'memory'"                               key="memory-debug" />
-        <SensorManagerSettings  v-if="activeTab === 'sensormanager'"                        key="sensor-manager" />
+        <SensorManagerSettings  v-if="activeTab === 'sensormanager'" ref="sensorRef"         key="sensor-manager" />
       </div>
     </div>
   </div>

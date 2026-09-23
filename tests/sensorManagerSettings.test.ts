@@ -12,6 +12,66 @@ vi.mock('@/utils/api', () => ({
 }));
 
 describe('Sensor Manager', () => {
+  it.each(['page save first', 'row save first'])(
+    'persists an edited definition when %s',
+    async (order) => {
+      vi.clearAllMocks();
+      vi.mocked(ApiService.getSensorTypes).mockResolvedValue({
+        success: true,
+        data: { types: [] },
+      } as never);
+      vi.mocked(ApiService.getSensorConfig).mockResolvedValue({
+        success: true,
+        data: {
+          enabled: true,
+          poll_interval_seconds: 30,
+          auto_install_packages: false,
+          definitions: [
+            {
+              name: 'modem',
+              _original_name: 'modem',
+              type: 'openhop_modem',
+              enabled: true,
+              settings: { host: 'first.local' },
+            },
+          ],
+        },
+      } as never);
+      vi.mocked(ApiService.updateSensorConfig).mockResolvedValue({
+        success: true,
+        data: { saved: true, restart_required: false, message: 'saved' },
+      } as never);
+      const wrapper = mount(SensorManagerSettings, {
+        global: { stubs: { RestartModal: true, UnsavedChangesModal: true, Spinner: true } },
+      });
+      await flushPromises();
+      await wrapper
+        .findAll('button')
+        .find((b) => b.text() === 'Edit Sensors')!
+        .trigger('click');
+      await wrapper
+        .findAll('button')
+        .find((b) => b.text() === 'Edit')!
+        .trigger('click');
+      await wrapper.findAll('input[type="text"]')[0].setValue('renamed');
+      if (order === 'row save first') {
+        await wrapper
+          .findAll('button')
+          .find((b) => b.text() === 'Save')!
+          .trigger('click');
+      }
+      await wrapper
+        .findAll('button')
+        .find((b) => b.text() === 'Save Changes')!
+        .trigger('click');
+      await flushPromises();
+      expect(vi.mocked(ApiService.updateSensorConfig)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(ApiService.updateSensorConfig).mock.calls[0][0].definitions[0].name).toBe(
+        'renamed',
+      );
+      wrapper.unmount();
+    },
+  );
   it('gets new types from the API and never prints a stored password', async () => {
     vi.mocked(ApiService.getSensorTypes).mockResolvedValue({
       success: true,

@@ -108,6 +108,15 @@ const formatMetric = (key: string, value: unknown): string => {
   if (value === null || value === undefined) return 'n/a';
 
   const num = typeof value === 'number' ? value : NaN;
+  // Backend unit suffixes are authoritative; semantic names below assume base units.
+  if (Number.isFinite(num)) {
+    if (key.endsWith('_ma')) return `${num.toFixed(1)}mA`;
+    if (key.endsWith('_mv')) return `${num}mV`;
+    if (key.endsWith('_mw')) return `${num.toFixed(1)}mW`;
+    if (key.endsWith('_a')) return `${num.toFixed(2)}A`;
+    if (key.endsWith('_v')) return `${num.toFixed(2)}V`;
+    if (key.endsWith('_w')) return `${num.toFixed(2)}W`;
+  }
 
   // Temperature
   if (key.match(/temperature|temp/) && Number.isFinite(num)) {

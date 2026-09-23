@@ -194,7 +194,9 @@ function toggleSensor(index: number) {
 
 // Save all
 async function saveAll(): Promise<boolean> {
-  if (!draftConfig.value) return false;
+  if (!draftConfig.value || isSaving.value) return false;
+  // The row editor is a separate draft; include it in both page and leave-guard saves.
+  if (editingIndex.value !== null) saveEditSensor();
   isSaving.value = true;
   error.value = null;
   try {
