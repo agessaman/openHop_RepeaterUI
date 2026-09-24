@@ -1,22 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { ApiService } from '@/utils/api';
 import type { RadioFrontendSettings, RadioFrontendStatus } from '@/generated/openapi';
 
-// Front-end controls apply to the modem immediately (no restart), so this card
-// saves on its own rather than through the hardware form's restart flow.
+// RF front-end rows for the default radio's KISS modem, shown inside Radio
+// Hardware and driven by that page's Edit / Save. Unlike the rest of the page,
+// these apply to the modem immediately rather than after a restart, so the
+// parent calls apply() first and only offers a restart for hardware changes.
 
 const props = defineProps<{
-  /** Set on a multi-radio node: the controls act on this radio only. */
-  defaultRadioId?: string;
+  /** Follows the parent page's edit mode; entering it reloads the inputs. */
+  editing: boolean;
 }>();
 
 type GainChoice = 'on' | 'off' | '';
 
 const status = ref<RadioFrontendStatus | null>(null);
 const loading = ref(true);
-const isEditing = ref(false);
-const isSaving = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
 
@@ -44,6 +44,7 @@ const hasAnyControl = computed(
       supports.value.fem_tx_gain ||
       supports.value.rx_boosted_gain),
 );
+const available = computed(() => !loading.value && !!status.value?.available);
 
 async function load() {
   loading.value = true;
@@ -77,126 +78,105 @@ function gainChoice(value: boolean | undefined): GainChoice {
   return value === undefined ? '' : value ? 'on' : 'off';
 }
 
-function startEditing() {
+function resetInputs() {
   const running = status.value?.running ?? {};
   agcInput.value = running.agc_reset_interval_seconds ?? null;
   for (const { key } of gainRows) gainInput[key] = gainChoice(running[key]);
   errorMessage.value = '';
-  successMessage.value = '';
-  isEditing.value = true;
 }
 
-function cancelEditing() {
-  isEditing.value = false;
-  errorMessage.value = '';
-}
+watch(
+  () => props.editing,
+  (editing) => {
+    if (editing) {
+      successMessage.value = '';
+      resetInputs();
+    } else {
+      errorMessage.value = '';
+    }
+  },
+);
 
-/** Only settings the operator changed from what the modem runs are sent. */
-function buildChanges(): RadioFrontendSettings | string {
+/** Settings the operator changed from what the modem runs, or an error message. */
+function changes(): RadioFrontendSettings | string {
+  if (!available.value) return {};
   const running = status.value?.running ?? {};
-  const changes: RadioFrontendSettings = {};
+  const result: RadioFrontendSettings = {};
   if (supports.value?.agc_reset_interval_seconds && agcInput.value !== null) {
     const agc = Number(agcInput.value);
     if (!Number.isInteger(agc) || agc < 0 || agc > 1020) {
       return 'AGC reset interval must be a whole number of seconds, 0-1020';
     }
-    if (agc !== running.agc_reset_interval_seconds) changes.agc_reset_interval_seconds = agc;
+    if (agc !== running.agc_reset_interval_seconds) result.agc_reset_interval_seconds = agc;
   }
   for (const { key } of gainRows) {
     if (!supports.value?.[key] || !gainInput[key]) continue;
     const enabled = gainInput[key] === 'on';
-    if (enabled !== running[key]) changes[key] = enabled;
+    if (enabled !== running[key]) result[key] = enabled;
   }
-  return changes;
+  return result;
 }
 
-async function saveChanges() {
-  const changes = buildChanges();
-  if (typeof changes === 'string') {
-    errorMessage.value = changes;
-    return;
+/** Check the inputs without sending anything; returns an error message or ''. */
+function validate(): string {
+  const result = changes();
+  errorMessage.value = typeof result === 'string' ? result : '';
+  return errorMessage.value;
+}
+
+function hasChanges(): boolean {
+  const result = changes();
+  return typeof result !== 'string' && Object.keys(result).length > 0;
+}
+
+/**
+ * Apply changed settings to the modem. Resolves true when there was nothing to
+ * apply or everything applied; on failure the reason is shown next to the rows.
+ */
+async function apply(): Promise<boolean> {
+  const result = changes();
+  if (typeof result === 'string') {
+    errorMessage.value = result;
+    return false;
   }
-  if (Object.keys(changes).length === 0) {
-    isEditing.value = false;
-    return;
-  }
-  isSaving.value = true;
+  if (Object.keys(result).length === 0) return true;
   errorMessage.value = '';
   try {
-    const result = await ApiService.setRadioFrontend(changes);
-    if (result.data) status.value = result.data;
-    if (result.success) {
-      const agc = result.data?.applied.agc_reset_interval_seconds;
-      successMessage.value =
-        agc !== undefined && agc !== changes.agc_reset_interval_seconds
-          ? `Applied. AGC reset interval rounded to ${agc} s.`
-          : 'Applied to the radio.';
-      isEditing.value = false;
-      setTimeout(() => (successMessage.value = ''), 4000);
-    } else {
-      errorMessage.value = result.error || 'Failed to apply settings';
+    const response = await ApiService.setRadioFrontend(result);
+    if (response.data) status.value = response.data;
+    if (!response.success) {
+      errorMessage.value = response.error || 'Failed to apply RF front-end settings';
+      return false;
     }
+    const agc = response.data?.applied.agc_reset_interval_seconds;
+    successMessage.value =
+      agc !== undefined && agc !== result.agc_reset_interval_seconds
+        ? `RF front end applied. AGC reset interval rounded to ${agc} s.`
+        : 'RF front end applied to the radio.';
+    setTimeout(() => (successMessage.value = ''), 4000);
+    return true;
   } catch (error: unknown) {
     const e = error as { response?: { data?: { error?: string } }; message?: string };
-    errorMessage.value = e.response?.data?.error || e.message || 'Failed to apply settings';
-  } finally {
-    isSaving.value = false;
+    errorMessage.value =
+      e.response?.data?.error || e.message || 'Failed to apply RF front-end settings';
+    return false;
   }
 }
 
-defineExpose({ reload: load, isEditing });
+defineExpose({ apply, validate, hasChanges, reload: load, available });
 </script>
 
 <template>
-  <div
-    v-if="!loading && status?.available"
-    class="cfg-section space-y-3 rounded-xl border border-stroke-subtle dark:border-stroke/opacity-light p-3 sm:p-4"
-    data-testid="radio-frontend"
-  >
-    <div
-      class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 pb-2 border-b border-stroke-subtle dark:border-stroke/opacity-light"
-    >
-      <div>
-        <div class="text-sm font-semibold text-content-primary">RF Front End</div>
-        <div class="text-xs text-content-muted mt-1">
-          KISS modem controls, applied immediately without a restart<template
-            v-if="props.defaultRadioId"
-          >
-            to the default radio (<span class="font-mono font-semibold">{{
-              props.defaultRadioId
-            }}</span
-            >) only</template
-          >.
-        </div>
-      </div>
-      <div v-if="hasAnyControl" class="flex items-center gap-2 flex-shrink-0">
-        <button
-          v-if="!isEditing"
-          class="cfg-btn-secondary"
-          data-testid="frontend-edit"
-          @click="startEditing"
-        >
-          Edit
-        </button>
-        <template v-else>
-          <button class="cfg-btn-secondary" :disabled="isSaving" @click="cancelEditing">
-            Cancel
-          </button>
-          <button
-            class="cfg-btn-primary"
-            :disabled="isSaving"
-            data-testid="frontend-save"
-            @click="saveChanges"
-          >
-            {{ isSaving ? 'Applying...' : 'Apply' }}
-          </button>
-        </template>
-      </div>
+  <template v-if="available">
+    <div class="pt-2 text-xs text-content-muted" data-testid="radio-frontend">
+      RF Front End
+      <span class="block text-[11px]">Applied to the modem on Save, without a restart.</span>
     </div>
 
     <div
       v-if="successMessage"
       class="bg-accent-green/opacity-light dark:bg-accent-green/opacity-medium border border-accent-green dark:border-accent-green/opacity-heavy rounded-lg p-3 text-accent-green text-sm"
+      data-testid="frontend-success"
     >
       {{ successMessage }}
     </div>
@@ -208,7 +188,7 @@ defineExpose({ reload: load, isEditing });
       {{ errorMessage }}
     </div>
 
-    <p v-if="!hasAnyControl" class="text-xs text-content-muted" data-testid="frontend-none">
+    <p v-if="!hasAnyControl" class="text-xs text-content-muted py-2" data-testid="frontend-none">
       This modem reports no front-end controls. They need MeshCore KISS firmware v2 or newer, and
       FEM gain also needs a board that exposes it.
     </p>
@@ -225,11 +205,11 @@ defineExpose({ reload: load, isEditing });
           >
         </span>
         <span
-          v-if="!isEditing"
+          v-if="!props.editing"
           class="text-content-primary font-mono text-sm"
           data-testid="frontend-agc"
         >
-          {{ agcLabel(status.running.agc_reset_interval_seconds)
+          {{ agcLabel(status!.running.agc_reset_interval_seconds)
           }}{{ configuredNote('agc_reset_interval_seconds') }}
         </span>
         <input
@@ -239,7 +219,7 @@ defineExpose({ reload: load, isEditing });
           min="0"
           max="1020"
           step="4"
-          class="cfg-input w-full sm:w-32"
+          class="cfg-input w-full sm:w-40"
           data-testid="frontend-agc-input"
         />
       </div>
@@ -255,16 +235,16 @@ defineExpose({ reload: load, isEditing });
         </span>
         <template v-if="supports?.[row.key]">
           <span
-            v-if="!isEditing"
+            v-if="!props.editing"
             class="text-content-primary font-mono text-sm"
             :data-testid="`frontend-${row.key}`"
           >
-            {{ gainLabel(status.running[row.key]) }}{{ configuredNote(row.key) }}
+            {{ gainLabel(status!.running[row.key]) }}{{ configuredNote(row.key) }}
           </span>
           <select
             v-else
             v-model="gainInput[row.key]"
-            class="cfg-select w-full sm:w-32"
+            class="cfg-select w-full sm:w-40"
             :data-testid="`frontend-${row.key}-input`"
           >
             <option v-if="gainInput[row.key] === ''" value="" disabled>Unknown</option>
@@ -277,5 +257,5 @@ defineExpose({ reload: load, isEditing });
         >
       </div>
     </template>
-  </div>
+  </template>
 </template>
