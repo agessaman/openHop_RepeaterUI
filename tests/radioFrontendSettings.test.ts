@@ -41,8 +41,13 @@ vi.mock('@/composables/useUnsavedChanges', () => ({
 function status(overrides: Record<string, unknown> = {}) {
   return {
     available: true,
-    supports: { agc_reset_interval_seconds: true, fem_rx_gain: true, fem_tx_gain: false },
-    running: { agc_reset_interval_seconds: 30, fem_rx_gain: false },
+    supports: {
+      agc_reset_interval_seconds: true,
+      fem_rx_gain: true,
+      fem_tx_gain: false,
+      rx_boosted_gain: true,
+    },
+    running: { agc_reset_interval_seconds: 32, fem_rx_gain: false, rx_boosted_gain: true },
     configured: {},
     ...overrides,
   };
@@ -76,7 +81,12 @@ describe('RadioFrontendSettings', () => {
     apiMock.getRadioFrontend.mockResolvedValue({
       success: true,
       data: status({
-        supports: { agc_reset_interval_seconds: false, fem_rx_gain: false, fem_tx_gain: false },
+        supports: {
+          agc_reset_interval_seconds: false,
+          fem_rx_gain: false,
+          fem_tx_gain: false,
+          rx_boosted_gain: false,
+        },
         running: {},
       }),
     });
@@ -89,11 +99,11 @@ describe('RadioFrontendSettings', () => {
   it('shows running values, board defaults, and unsupported controls', async () => {
     apiMock.getRadioFrontend.mockResolvedValue({
       success: true,
-      data: status({ configured: { agc_reset_interval_seconds: 30 } }),
+      data: status({ configured: { agc_reset_interval_seconds: 32 } }),
     });
     const wrapper = mountCard({ defaultRadioId: 'local' });
     await flushPromises();
-    expect(wrapper.get('[data-testid="frontend-agc"]').text()).toBe('30 s');
+    expect(wrapper.get('[data-testid="frontend-agc"]').text()).toBe('32 s');
     expect(wrapper.get('[data-testid="frontend-fem_rx_gain"]').text()).toBe('Off (board default)');
     expect(wrapper.get('[data-testid="frontend-fem_tx_gain"]').text()).toBe(
       'Not available on this board',
@@ -107,7 +117,7 @@ describe('RadioFrontendSettings', () => {
       success: true,
       data: {
         ...status({
-          running: { agc_reset_interval_seconds: 8, fem_rx_gain: false },
+          running: { agc_reset_interval_seconds: 8, fem_rx_gain: false, rx_boosted_gain: true },
           configured: { agc_reset_interval_seconds: 8 },
         }),
         applied: { agc_reset_interval_seconds: 8 },
@@ -137,6 +147,31 @@ describe('RadioFrontendSettings', () => {
     await wrapper.get('[data-testid="frontend-fem_rx_gain-input"]').setValue('on');
     await clickTestId(wrapper, 'frontend-save');
     expect(ApiService.setRadioFrontend).toHaveBeenCalledWith({ fem_rx_gain: true });
+  });
+
+  it('shows and sends the radio chip boosted RX gain separately from the LNA', async () => {
+    apiMock.getRadioFrontend.mockResolvedValue({ success: true, data: status() });
+    apiMock.setRadioFrontend.mockResolvedValue({
+      success: true,
+      data: {
+        ...status({
+          running: { agc_reset_interval_seconds: 32, fem_rx_gain: false, rx_boosted_gain: false },
+          configured: { rx_boosted_gain: false },
+        }),
+        applied: { rx_boosted_gain: false },
+        errors: {},
+      },
+    });
+    const wrapper = mountCard();
+    await flushPromises();
+    expect(wrapper.get('[data-testid="frontend-rx_boosted_gain"]').text()).toBe(
+      'On (board default)',
+    );
+    await clickTestId(wrapper, 'frontend-edit');
+    await wrapper.get('[data-testid="frontend-rx_boosted_gain-input"]').setValue('off');
+    await clickTestId(wrapper, 'frontend-save');
+    expect(ApiService.setRadioFrontend).toHaveBeenCalledWith({ rx_boosted_gain: false });
+    expect(wrapper.get('[data-testid="frontend-rx_boosted_gain"]').text()).toBe('Off');
   });
 
   it('does not call the API when nothing changed', async () => {

@@ -11,7 +11,7 @@ const props = defineProps<{
   defaultRadioId?: string;
 }>();
 
-type FemChoice = 'on' | 'off' | '';
+type GainChoice = 'on' | 'off' | '';
 
 const status = ref<RadioFrontendStatus | null>(null);
 const loading = ref(true);
@@ -21,11 +21,18 @@ const errorMessage = ref('');
 const successMessage = ref('');
 
 const agcInput = ref<number | null>(null);
-type FemKey = 'fem_rx_gain' | 'fem_tx_gain';
-const femInput = reactive<Record<FemKey, FemChoice>>({ fem_rx_gain: '', fem_tx_gain: '' });
-const femRows: ReadonlyArray<{ key: FemKey; label: string }> = [
+// On/off controls. Boosted RX gain is the radio chip's own (MeshCore radio.rxgain),
+// independent of the external FEM LNA.
+type GainKey = 'fem_rx_gain' | 'fem_tx_gain' | 'rx_boosted_gain';
+const gainInput = reactive<Record<GainKey, GainChoice>>({
+  fem_rx_gain: '',
+  fem_tx_gain: '',
+  rx_boosted_gain: '',
+});
+const gainRows: ReadonlyArray<{ key: GainKey; label: string; hint?: string }> = [
   { key: 'fem_rx_gain', label: 'FEM RX Gain (LNA)' },
   { key: 'fem_tx_gain', label: 'FEM TX Gain (PA)' },
+  { key: 'rx_boosted_gain', label: 'Radio RX Boosted Gain', hint: 'The LoRa chip’s own gain mode' },
 ];
 
 const supports = computed(() => status.value?.supports);
@@ -34,7 +41,8 @@ const hasAnyControl = computed(
     !!supports.value &&
     (supports.value.agc_reset_interval_seconds ||
       supports.value.fem_rx_gain ||
-      supports.value.fem_tx_gain),
+      supports.value.fem_tx_gain ||
+      supports.value.rx_boosted_gain),
 );
 
 async function load() {
@@ -56,7 +64,7 @@ function agcLabel(seconds: number | undefined): string {
   return seconds === 0 ? 'Off' : `${seconds} s`;
 }
 
-function femLabel(value: boolean | undefined): string {
+function gainLabel(value: boolean | undefined): string {
   if (value === undefined) return 'Unknown';
   return value ? 'On' : 'Off';
 }
@@ -65,15 +73,14 @@ function configuredNote(key: keyof RadioFrontendSettings): string {
   return status.value?.configured[key] === undefined ? ' (board default)' : '';
 }
 
-function femChoice(value: boolean | undefined): FemChoice {
+function gainChoice(value: boolean | undefined): GainChoice {
   return value === undefined ? '' : value ? 'on' : 'off';
 }
 
 function startEditing() {
   const running = status.value?.running ?? {};
   agcInput.value = running.agc_reset_interval_seconds ?? null;
-  femInput.fem_rx_gain = femChoice(running.fem_rx_gain);
-  femInput.fem_tx_gain = femChoice(running.fem_tx_gain);
+  for (const { key } of gainRows) gainInput[key] = gainChoice(running[key]);
   errorMessage.value = '';
   successMessage.value = '';
   isEditing.value = true;
@@ -95,9 +102,9 @@ function buildChanges(): RadioFrontendSettings | string {
     }
     if (agc !== running.agc_reset_interval_seconds) changes.agc_reset_interval_seconds = agc;
   }
-  for (const { key } of femRows) {
-    if (!supports.value?.[key] || !femInput[key]) continue;
-    const enabled = femInput[key] === 'on';
+  for (const { key } of gainRows) {
+    if (!supports.value?.[key] || !gainInput[key]) continue;
+    const enabled = gainInput[key] === 'on';
     if (enabled !== running[key]) changes[key] = enabled;
   }
   return changes;
@@ -238,28 +245,29 @@ defineExpose({ reload: load, isEditing });
       </div>
 
       <div
-        v-for="row in femRows"
+        v-for="row in gainRows"
         :key="row.key"
         class="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 border-b border-stroke-subtle dark:border-stroke/opacity-light gap-1"
       >
-        <span class="text-content-secondary dark:text-content-muted text-xs sm:text-sm">{{
-          row.label
-        }}</span>
+        <span class="text-content-secondary dark:text-content-muted text-xs sm:text-sm">
+          {{ row.label }}
+          <span v-if="row.hint" class="block text-[11px] text-content-muted">{{ row.hint }}</span>
+        </span>
         <template v-if="supports?.[row.key]">
           <span
             v-if="!isEditing"
             class="text-content-primary font-mono text-sm"
             :data-testid="`frontend-${row.key}`"
           >
-            {{ femLabel(status.running[row.key]) }}{{ configuredNote(row.key) }}
+            {{ gainLabel(status.running[row.key]) }}{{ configuredNote(row.key) }}
           </span>
           <select
             v-else
-            v-model="femInput[row.key]"
+            v-model="gainInput[row.key]"
             class="cfg-select w-full sm:w-32"
             :data-testid="`frontend-${row.key}-input`"
           >
-            <option v-if="femInput[row.key] === ''" value="" disabled>Unknown</option>
+            <option v-if="gainInput[row.key] === ''" value="" disabled>Unknown</option>
             <option value="on">On</option>
             <option value="off">Off</option>
           </select>

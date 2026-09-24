@@ -63,6 +63,8 @@ export interface RadioFrontendSettings {
   fem_rx_gain?: boolean;
   /** External FEM TX (PA) high gain */
   fem_tx_gain?: boolean;
+  /** The radio chip's own boosted RX gain (MeshCore radio.rxgain), separate from the external FEM RX gain */
+  rx_boosted_gain?: boolean;
 }
 
 export interface RadioFrontendStatus {
@@ -72,6 +74,7 @@ export interface RadioFrontendStatus {
     agc_reset_interval_seconds: boolean;
     fem_rx_gain: boolean;
     fem_tx_gain: boolean;
+    rx_boosted_gain: boolean;
   };
   /** Values the modem reports now */
   running: RadioFrontendSettings;
@@ -1671,7 +1674,7 @@ export class Api<
   };
   radioFrontend = {
     /**
-     * @description AGC reset interval and external FEM gain of the default radio, read from the modem. Only KISS modems running MeshCore KISS firmware v2 or later report support; the controls a board supports come from the board itself.
+     * @description AGC reset interval, external FEM gain and radio chip boosted RX gain of the default radio, read from the modem. Only KISS modems running MeshCore KISS firmware v2 or later report support; the controls a board supports come from the board itself.
      *
      * @tags System
      * @name RadioFrontendList
