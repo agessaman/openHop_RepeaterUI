@@ -21,7 +21,7 @@ const AIRTIME_CACHE_TTL_MS = 120_000; // 2 minutes — matches 60-second bucket 
  *
  * @see https://www.semtech.com/design-support/lora-calculator
  */
-import { ref, onMounted, onBeforeUnmount, nextTick, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick, computed, watch } from 'vue';
 import { streamingGet } from '@/utils/streamingFetch';
 import { usePacketStore } from '@/stores/packets';
 import { useSystemStore } from '@/stores/system';
@@ -92,6 +92,7 @@ const chartData = ref<UtilSample[]>([]);
 const isLoading = ref(false);
 const isInitialFetch = ref(true);
 const isRefreshing = ref(false);
+const isFetching = ref(false);
 const chartError = ref<string | null>(null);
 const chartStatus = ref('Connecting...');
 
@@ -112,6 +113,22 @@ const radioConfig = ref<RadioConfig>({
   bwHz: 62500,
   cr: 5,
   preamble: 17,
+});
+
+/** Tracks whether the previous successful fetch used fallback radio defaults. */
+const lastFetchRadioSignature = ref<string | null>(null);
+
+const radioSignature = computed(() => {
+  const radio = systemStore.stats?.config?.radio as Record<string, number> | undefined;
+  if (!radio) return null;
+
+  const sf = radio.spreading_factor;
+  const bwHz = radio.bandwidth;
+  const cr = radio.coding_rate;
+  const preamble = radio.preamble_length;
+
+  if ([sf, bwHz, cr, preamble].some((v) => typeof v !== 'number')) return null;
+  return `${sf}:${bwHz}:${cr}:${preamble}`;
 });
 
 // ============================================================================
@@ -291,6 +308,10 @@ const uptimeBasedRates = computed(() => {
  * 7. Downsample for efficient rendering
  */
 const fetchChartData = async () => {
+  if (isFetching.value) return;
+
+  isFetching.value = true;
+  isLoading.value = true;
   chartStatus.value = 'Connecting...';
   chartError.value = null;
   if (!isInitialFetch.value) isRefreshing.value = true;
@@ -305,7 +326,15 @@ const fetchChartData = async () => {
 
     // Read radio config from system store (populated during bootstrap — avoids an extra /stats round-trip)
     const radio = systemStore.stats?.config?.radio as Record<string, number> | undefined;
-    if (radio) {
+    const hasRadioConfig = Boolean(
+      radio &&
+        typeof radio.spreading_factor === 'number' &&
+        typeof radio.bandwidth === 'number' &&
+        typeof radio.coding_rate === 'number' &&
+        typeof radio.preamble_length === 'number',
+    );
+
+    if (hasRadioConfig && radio) {
       radioConfig.value = {
         sf: radio.spreading_factor ?? 9,
         bwHz: radio.bandwidth ?? 62500,
@@ -313,6 +342,10 @@ const fetchChartData = async () => {
         preamble: radio.preamble_length ?? 17,
       };
     }
+
+    const fetchRadioSignature = hasRadioConfig
+      ? `${radioConfig.value.sf}:${radioConfig.value.bwHz}:${radioConfig.value.cr}:${radioConfig.value.preamble}`
+      : 'fallback';
 
     // Fetch pre-aggregated buckets from server (rx_ms/tx_ms per bucket_seconds interval)
     const chartRes = await streamingGet('/airtime_chart_data', {
@@ -410,6 +443,7 @@ const fetchChartData = async () => {
     yAxisMax.value = Math.max(5, Math.ceil(withHeadroom / 5) * 5);
 
     _airtimeCache = { data: downsampled, yAxisMax: yAxisMax.value, fetchedAt: Date.now() };
+    lastFetchRadioSignature.value = fetchRadioSignature;
     isLoading.value = false;
     isInitialFetch.value = false;
     isRefreshing.value = false;
@@ -423,6 +457,8 @@ const fetchChartData = async () => {
     isRefreshing.value = false;
     chartError.value = err instanceof Error ? err.message : 'Failed to load chart data';
     nextTick(() => drawChart());
+  } finally {
+    isFetching.value = false;
   }
 };
 
@@ -571,9 +607,10 @@ onMounted(() => {
     chartData.value = _airtimeCache.data;
     yAxisMax.value = _airtimeCache.yAxisMax;
     isInitialFetch.value = false;
-  } else {
-    fetchChartData();
   }
+
+  // Always refresh after mount so stale cache or fallback-radio data is corrected.
+  fetchChartData();
 
   nextTick(() => {
     drawChart();
@@ -581,6 +618,22 @@ onMounted(() => {
   });
 
   window.addEventListener('resize', drawChart);
+});
+
+watch(radioSignature, (newSignature, oldSignature) => {
+  if (!newSignature) return;
+
+  // If we previously fetched with fallback defaults, immediately refresh once
+  // real radio settings become available.
+  if (lastFetchRadioSignature.value === 'fallback') {
+    fetchChartData();
+    return;
+  }
+
+  // If radio params changed during runtime, re-query to keep utilization accurate.
+  if (oldSignature && newSignature !== oldSignature) {
+    fetchChartData();
+  }
 });
 
 onBeforeUnmount(() => {
