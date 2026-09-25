@@ -203,6 +203,7 @@ export interface SystemStats {
   temperature?: number;
   radio_status?: string;
   radio_error?: string;
+  modem_disconnected?: string[];
   last_packet_time?: number;
   noise_floor_dbm?: number;
   /** The other radios' latest samples; present only on a node with two or more. */
