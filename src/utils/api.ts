@@ -38,6 +38,9 @@ type AclClientsResponse = EndpointApiResponse<
 type AclRemoveClientResponse = EndpointApiResponse<
   (typeof generatedApiClient)['aclRemoveClient']['aclRemoveClientCreate']
 >;
+type AclSetPermissionsResponse = EndpointApiResponse<
+  (typeof generatedApiClient)['aclSetPermissions']['aclSetPermissionsCreate']
+>;
 type AclStatsResponse = EndpointApiResponse<(typeof generatedApiClient)['aclStats']['aclStatsList']>;
 type RoomMessagesResponse = EndpointApiResponse<
   (typeof generatedApiClient)['roomMessages']['roomMessagesList']
@@ -1185,8 +1188,14 @@ export class ApiService {
     }
   }
 
+  /**
+   * Remove a client from an identity's ACL, and its stored entry. Name the
+   * identity by `identity_name` where possible: two identities can share a
+   * hash. With neither, the backend removes the client from every ACL.
+   */
   static async removeACLClient(data: {
     public_key: string;
+    identity_name?: string;
     identity_hash?: string;
   }): Promise<AclRemoveClientResponse> {
     try {
@@ -1194,8 +1203,30 @@ export class ApiService {
       const response = await generatedApiClient.aclRemoveClient.aclRemoveClientCreate(
         {
           client_pubkey: data.public_key,
-          identity_hash: data.identity_hash ?? '',
+          ...(data.identity_name ? { identity_name: data.identity_name } : {}),
+          ...(data.identity_hash && !data.identity_name ? { identity_hash: data.identity_hash } : {}),
         },
+        params,
+      );
+      return response.data;
+    } catch (error: unknown) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Add or change an ACL entry, as the `setperm` CLI command. The key then
+   * logs in with a blank password, across restarts where `persisted`.
+   */
+  static async setACLPermissions(data: {
+    identity_name: string;
+    client_pubkey: string;
+    permissions: number;
+  }): Promise<AclSetPermissionsResponse> {
+    try {
+      const params = await this.getGeneratedRequestParams();
+      const response = await generatedApiClient.aclSetPermissions.aclSetPermissionsCreate(
+        data,
         params,
       );
       return response.data;
