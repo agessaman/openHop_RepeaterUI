@@ -323,6 +323,25 @@ html.is-mobile-app {
   .status-badge-red   { @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-ui-caption font-medium bg-accent-red/opacity-light text-accent-red; }
   .status-badge-muted { @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-ui-caption font-medium bg-background-mute text-content-muted; }
 
+  /* ── AA-contrast pills, notices and confirm buttons ─────────────────────── */
+  /* Text meets 4.5:1 on its own fill in both themes (badge-* tokens in
+     base.css). The accent-tint classes above pair a light hue with same-hue
+     text and fall short in light mode; prefer these for new UI. */
+  .pill-green   { @apply inline-flex items-center px-2 py-0.5 rounded text-ui-caption font-medium whitespace-nowrap bg-badge-green-bg text-badge-green-text; }
+  .pill-red     { @apply inline-flex items-center px-2 py-0.5 rounded text-ui-caption font-medium whitespace-nowrap bg-badge-red-bg text-badge-red-text; }
+  .pill-amber   { @apply inline-flex items-center px-2 py-0.5 rounded text-ui-caption font-medium whitespace-nowrap bg-badge-amber-bg text-badge-amber-text; }
+  .pill-cyan    { @apply inline-flex items-center px-2 py-0.5 rounded text-ui-caption font-medium whitespace-nowrap bg-badge-cyan-bg text-badge-cyan-text; }
+  .pill-neutral { @apply inline-flex items-center px-2 py-0.5 rounded text-ui-caption font-medium whitespace-nowrap bg-badge-neutral-bg text-badge-neutral-text; }
+
+  .notice-success { @apply rounded-lg p-3 text-ui-label border border-accent-green/opacity-medium bg-badge-green-bg text-badge-green-text; }
+  .notice-error   { @apply rounded-lg p-3 text-ui-label border border-accent-red/opacity-medium bg-badge-red-bg text-badge-red-text; }
+  .notice-warning { @apply rounded-lg p-3 text-ui-label border border-accent-amber/opacity-medium bg-badge-amber-bg text-badge-amber-text; }
+
+  /* Confirm buttons for ConfirmDialog — pair with .modal-btn-cancel in .modal-actions */
+  .modal-btn-confirm-danger  { @apply flex-1 px-4 py-3 rounded-lg transition-colors font-medium border border-accent-red/opacity-heavy bg-badge-red-bg text-badge-red-text hover:brightness-95; }
+  .modal-btn-confirm-warning { @apply flex-1 px-4 py-3 rounded-lg transition-colors font-medium border border-accent-amber/opacity-heavy bg-badge-amber-bg text-badge-amber-text hover:brightness-95; }
+  .modal-btn-confirm-info    { @apply flex-1 px-4 py-3 rounded-lg transition-colors font-medium border border-primary/opacity-heavy bg-badge-cyan-bg text-badge-cyan-text hover:brightness-95; }
+
   /* ── Status indicator dots ──────────────────────────────────────────────── */
   /* Inline status dots — use alongside w-1.5 h-1.5 rounded-full */
   .status-dot-green     { background-color: var(--color-accent-green); }
