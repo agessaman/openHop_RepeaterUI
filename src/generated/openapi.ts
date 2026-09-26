@@ -3784,6 +3784,12 @@ export class Api<
             clients?: ACLClient[];
             /** Number of clients returned */
             count?: number;
+            /**
+             * Identity name to error, for identities whose stored ACL
+             * could not be read at startup; their list is not the
+             * stored one.
+             */
+            store_errors?: Record<string, string>;
             /** Filter applied (if any) */
             filter?: {
               identity_hash?: string | null;

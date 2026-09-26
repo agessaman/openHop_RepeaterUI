@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { ref, toRef, useId } from 'vue';
+import { useDialogFocus } from '@/composables/useDialogFocus';
+
 interface Props {
   show: boolean;
   title?: string;
@@ -29,15 +32,18 @@ const variantColors = {
   info: 'bg-primary/opacity-medium border-primary/opacity-medium text-primary',
 };
 
-// Tinted fill with the variant's own text colour, as .modal-btn-danger: white
-// text on the light tint was unreadable in light mode.
-const buttonColors = {
-  danger:
-    'bg-accent-red/opacity-medium hover:bg-accent-red/opacity-medium border border-accent-red/opacity-heavy text-accent-red',
-  warning:
-    'bg-accent-amber/opacity-medium hover:bg-accent-amber/opacity-medium border border-accent-amber/opacity-heavy text-accent-amber',
-  info: 'bg-primary/opacity-medium hover:bg-primary/opacity-medium border border-primary/opacity-heavy text-primary',
+// White text on the light tint was unreadable in light mode; these keep AA
+// contrast in both themes (main.css).
+const buttonClasses = {
+  danger: 'modal-btn-confirm-danger',
+  warning: 'modal-btn-confirm-warning',
+  info: 'modal-btn-confirm-info',
 };
+
+const dialog = ref<HTMLElement | null>(null);
+const titleId = useId();
+const messageId = useId();
+useDialogFocus(toRef(props, 'show'), dialog, () => emit('close'));
 </script>
 
 <template>
@@ -50,18 +56,25 @@ const buttonColors = {
   >
     <!-- Modal Content -->
     <div
+      ref="dialog"
       class="modal-card max-w-md"
+      role="alertdialog"
+      aria-modal="true"
+      :aria-labelledby="titleId"
+      :aria-describedby="messageId"
     >
       <!-- Header -->
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-xl font-semibold text-content-primary">
+        <h3 :id="titleId" class="text-xl font-semibold text-content-primary">
           {{ props.title }}
         </h3>
         <button
+          type="button"
+          aria-label="Close"
           @click="emit('close')"
           class="text-content-secondary dark:text-content-muted hover:text-content-primary dark:hover:text-content-primary transition-colors"
         >
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-6 h-6" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -115,26 +128,17 @@ const buttonColors = {
             />
           </svg>
         </div>
-        <p class="text-content-secondary dark:text-content-primary/opacity-heavy text-base leading-relaxed">
+        <p :id="messageId" class="text-content-secondary dark:text-content-primary/opacity-heavy text-base leading-relaxed">
           {{ props.message }}
         </p>
       </div>
 
       <!-- Actions -->
-      <div class="flex gap-3">
-        <button
-          @click="emit('close')"
-          class="flex-1 px-4 py-3 rounded-xl bg-background-mute dark:bg-white/opacity-subtle hover:bg-stroke-subtle dark:hover:bg-white/opacity-light text-content-primary transition-all duration-200 border border-stroke-subtle dark:border-stroke/opacity-light"
-        >
+      <div class="modal-actions">
+        <button type="button" class="modal-btn-cancel" @click="emit('close')">
           {{ props.cancelText }}
         </button>
-        <button
-          @click="emit('confirm')"
-          :class="[
-            'flex-1 px-4 py-3 rounded-xl font-medium transition-all duration-200',
-            buttonColors[props.variant],
-          ]"
-        >
+        <button type="button" :class="buttonClasses[props.variant]" @click="emit('confirm')">
           {{ props.confirmText }}
         </button>
       </div>

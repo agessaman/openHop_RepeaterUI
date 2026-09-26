@@ -4,16 +4,15 @@
  */
 export const ACL_ROLE_MASK = 0x03;
 
-export type AclRoleName = 'guest' | 'read_only' | 'read_write' | 'admin';
-
 /** Roles an entry can be given. Guest (0) removes an entry, so it is not offered. */
-export const ACL_ASSIGNABLE_ROLES: { value: number; name: AclRoleName; label: string }[] = [
-  { value: 3, name: 'admin', label: 'Admin' },
-  { value: 2, name: 'read_write', label: 'Read-write' },
-  { value: 1, name: 'read_only', label: 'Read-only' },
+export const ACL_ASSIGNABLE_ROLES: { value: number; label: string }[] = [
+  { value: 3, label: 'Admin' },
+  { value: 2, label: 'Read-write' },
+  { value: 1, label: 'Read-only' },
 ];
 
-const ROLE_LABELS: Record<AclRoleName, string> = {
+/** Labels for the role names the backend reports (`acl_role_name`). */
+const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin',
   read_write: 'Read-write',
   read_only: 'Read-only',
@@ -21,13 +20,13 @@ const ROLE_LABELS: Record<AclRoleName, string> = {
 };
 
 export function aclRoleLabel(name: string | undefined): string {
-  return ROLE_LABELS[name as AclRoleName] ?? name ?? 'Unknown';
+  return (name && ROLE_LABELS[name]) || name || 'Unknown';
 }
 
 export function aclRoleBadgeClass(name: string | undefined): string {
-  if (name === 'admin') return 'bg-accent-green/opacity-medium text-accent-green';
-  if (name === 'read_write') return 'bg-primary/opacity-medium text-primary';
-  return 'bg-secondary/opacity-medium text-secondary';
+  if (name === 'admin') return 'pill-green';
+  if (name === 'read_write') return 'pill-cyan';
+  return 'pill-neutral';
 }
 
 /** The permissions byte with its role replaced and its upper bits kept. */

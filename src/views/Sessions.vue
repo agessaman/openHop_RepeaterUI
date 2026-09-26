@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 import ApiService from '@/utils/api';
+import type { ACLClient } from '@/generated/openapi';
 import Spinner from '@/components/ui/Spinner.vue';
 import AclEntryModal from '@/components/modals/AclEntryModal.vue';
 import ConfirmDialog from '@/components/modals/ConfirmDialog.vue';
 import {
   ACL_ASSIGNABLE_ROLES,
+  ACL_ROLE_MASK,
   aclRoleBadgeClass,
   aclRoleLabel,
   withAclRole,
@@ -20,7 +22,7 @@ const error = ref<string | null>(null);
 
 // ACL data
 const aclInfo = ref<any>(null);
-const aclClients = ref<any[]>([]);
+const aclClients = ref<ACLClient[]>([]);
 const aclStats = ref<any>(null);
 const selectedIdentity = ref<string | null>(null);
 
@@ -35,52 +37,78 @@ onMounted(async () => {
   initialLoadComplete.value = true;
 });
 
+// Refreshes overlap when several rows change at once; only the latest one's
+// results are applied, so an older response cannot overwrite a newer list.
+let fetchGeneration = 0;
+
 async function fetchAllACLData() {
+  const generation = ++fetchGeneration;
   loading.value = true;
   error.value = null;
 
   try {
-    // Fetch ACL info
-    const infoResponse = await ApiService.getACLInfo();
+    const [infoResponse, clientsResponse, statsResponse] = await Promise.all([
+      ApiService.getACLInfo(),
+      ApiService.getACLClients(),
+      ApiService.getACLStats(),
+    ]);
+    if (generation !== fetchGeneration) return;
     if (infoResponse.success) {
       aclInfo.value = infoResponse.data;
     }
-
-    // Fetch ACL clients
-    const clientsResponse = await ApiService.getACLClients();
     if (clientsResponse.success && clientsResponse.data) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      aclClients.value = (clientsResponse.data as any).clients || [];
+      aclClients.value = clientsResponse.data.clients || [];
     }
-
-    // Fetch ACL stats
-    const statsResponse = await ApiService.getACLStats();
     if (statsResponse.success) {
       aclStats.value = statsResponse.data;
     }
   } catch (err) {
+    if (generation !== fetchGeneration) return;
     error.value = err instanceof Error ? err.message : 'Failed to load ACL data';
     console.error('Error fetching ACL data:', err);
   } finally {
-    loading.value = false;
+    if (generation === fetchGeneration) loading.value = false;
   }
 }
 
 // ACL management
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AclEntry = any;
+type AclEntry = ACLClient;
 
 const showAddModal = ref(false);
 const pendingRemoval = ref<AclEntry | null>(null);
-const busyKey = ref<string | null>(null);
+const busyKeys = ref(new Set<string>());
 const notice = ref<{ kind: 'success' | 'error'; text: string } | null>(null);
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
 function entryKey(client: AclEntry): string {
   return `${client.identity_name}:${client.public_key_full}`;
 }
 
+function isBusy(client: AclEntry): boolean {
+  return busyKeys.value.has(entryKey(client));
+}
+
+async function whileBusy(client: AclEntry, work: () => Promise<void>) {
+  const key = entryKey(client);
+  busyKeys.value.add(key);
+  try {
+    await work();
+  } finally {
+    busyKeys.value.delete(key);
+  }
+}
+
 function showNotice(kind: 'success' | 'error', text: string) {
+  clearTimeout(noticeTimer);
   notice.value = { kind, text };
+  // Results fade on their own; errors stay until dismissed.
+  if (kind === 'success') noticeTimer = setTimeout(() => (notice.value = null), 5000);
+}
+
+onBeforeUnmount(() => clearTimeout(noticeTimer));
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 async function onEntrySaved(message: string) {
@@ -93,60 +121,104 @@ async function confirmRemoval() {
   const client = pendingRemoval.value;
   pendingRemoval.value = null;
   if (!client) return;
-  busyKey.value = entryKey(client);
-  try {
-    const response = await ApiService.removeACLClient({
-      public_key: client.public_key_full,
-      identity_name: client.identity_name,
-    });
-    if (response.success) {
-      showNotice('success', `Removed ${client.public_key} from ${client.identity_name}`);
-      await fetchAllACLData();
-    } else {
-      showNotice('error', `Could not remove the entry: ${response.error}`);
+  await whileBusy(client, async () => {
+    try {
+      const response = await ApiService.removeACLClient({
+        public_key: client.public_key_full,
+        identity_name: client.identity_name,
+        identity_hash: client.identity_hash,
+      });
+      if (response.success) {
+        showNotice('success', `Removed ${client.public_key} from ${client.identity_name}`);
+      } else {
+        showNotice('error', `Could not remove the entry: ${response.error}`);
+      }
+    } catch (err) {
+      showNotice('error', `Could not remove the entry: ${errorText(err)}`);
     }
-  } catch (err) {
-    showNotice('error', `Could not remove the entry: ${err instanceof Error ? err.message : err}`);
-  } finally {
-    busyKey.value = null;
-  }
-}
-
-async function changeRole(client: AclEntry, event: Event) {
-  const role = Number((event.target as HTMLSelectElement).value);
-  busyKey.value = entryKey(client);
-  try {
-    const response = await ApiService.setACLPermissions({
-      identity_name: client.identity_name,
-      client_pubkey: client.public_key_full,
-      permissions: withAclRole(client.permissions_value, role),
-    });
-    if (response.success) {
-      showNotice('success', response.message || 'Role changed');
-    } else {
-      showNotice('error', `Could not change the role: ${response.error}`);
-    }
-  } catch (err) {
-    showNotice('error', `Could not change the role: ${err instanceof Error ? err.message : err}`);
-  } finally {
-    busyKey.value = null;
-    // Re-read either way: on failure the select must show the stored role again.
-    await fetchAllACLData();
-  }
+  });
+  await fetchAllACLData();
 }
 
 function roleValue(client: AclEntry): number {
-  return (client.permissions_value ?? 0) & 3;
+  return (client.permissions_value ?? 0) & ACL_ROLE_MASK;
 }
 
-function formatTimestamp(timestamp: number): string {
+/** A role change the operator must confirm: it makes a saved room admin temporary. */
+const pendingRoleChange = ref<{
+  client: AclEntry;
+  role: number;
+  select: HTMLSelectElement;
+} | null>(null);
+
+function onRoleSelected(client: AclEntry, event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const role = Number(select.value);
+  if (client.identity_type === 'room_server' && client.persisted && role !== 3) {
+    pendingRoleChange.value = { client, role, select };
+    return;
+  }
+  void applyRole(client, role, select);
+}
+
+const pendingRoleLabel = computed(
+  () =>
+    ACL_ASSIGNABLE_ROLES.find((option) => option.value === pendingRoleChange.value?.role)?.label ??
+    '',
+);
+
+function storeErrorText(identity: { name: string; store_error?: string | null }): string {
+  return (
+    `${identity.name}: the saved access list could not be read (${identity.store_error}). ` +
+    'Saved keys cannot log in until it is read; the repeater retries on the next login.'
+  );
+}
+
+function cancelRoleChange() {
+  const pending = pendingRoleChange.value;
+  pendingRoleChange.value = null;
+  if (pending) pending.select.value = String(roleValue(pending.client));
+}
+
+function confirmRoleChange() {
+  const pending = pendingRoleChange.value;
+  pendingRoleChange.value = null;
+  if (pending) void applyRole(pending.client, pending.role, pending.select);
+}
+
+async function applyRole(client: AclEntry, role: number, select: HTMLSelectElement) {
+  let applied = false;
+  await whileBusy(client, async () => {
+    try {
+      const response = await ApiService.setACLPermissions({
+        identity_name: client.identity_name!,
+        client_pubkey: client.public_key_full,
+        permissions: withAclRole(client.permissions_value, role),
+      });
+      applied = !!response.success;
+      if (response.success) {
+        showNotice('success', response.message || 'Role changed');
+      } else {
+        showNotice('error', `Could not change the role: ${response.error}`);
+      }
+    } catch (err) {
+      showNotice('error', `Could not change the role: ${errorText(err)}`);
+    }
+  });
+  // The browser already shows the new choice; put the stored role back
+  // rather than rely on the refresh to overwrite it.
+  if (!applied) select.value = String(roleValue(client));
+  await fetchAllACLData();
+}
+
+function formatTimestamp(timestamp: number | undefined): string {
   if (!timestamp) return 'Never';
   return new Date(timestamp * 1000).toLocaleString();
 }
 
-function formatActivity(timestamp: number): string {
+function formatActivity(timestamp: number | undefined): string {
   // An entry loaded at startup or added here has no activity until it logs in.
-  return timestamp ? formatTimestamp(timestamp) : 'Not since restart';
+  return timestamp ? formatTimestamp(timestamp) : 'No activity yet';
 }
 
 function setActiveTab(tabId: string) {
@@ -166,6 +238,11 @@ const identityList = computed(() => {
 /** Identities that take logins, and so have an access list. */
 const aclIdentities = computed(() =>
   identityList.value.filter((identity: { type?: string }) => identity.type !== 'companion'),
+);
+
+/** Identities whose saved access list could not be read at startup. */
+const identitiesWithStoreError = computed(() =>
+  aclIdentities.value.filter((identity: { store_error?: string | null }) => identity.store_error),
 );
 
 function isCompanion(identity: { type?: string }): boolean {
@@ -234,20 +311,6 @@ function formatOptionalAcl(value: unknown): string {
       </div>
     </div>
 
-    <div
-      v-if="notice"
-      role="status"
-      :class="[
-        'flex items-start justify-between gap-3 rounded-lg border p-3 text-sm',
-        notice.kind === 'success'
-          ? 'bg-accent-green/opacity-light border-accent-green/opacity-medium text-accent-green'
-          : 'bg-accent-red/opacity-light border-accent-red/opacity-medium text-accent-red',
-      ]"
-    >
-      <span>{{ notice.text }}</span>
-      <button class="shrink-0 underline" @click="notice = null">Dismiss</button>
-    </div>
-
     <!-- Main Content -->
     <div class="glass-card rounded-[15px] p-6">
       <!-- Tab Navigation -->
@@ -309,6 +372,22 @@ function formatOptionalAcl(value: unknown): string {
             {{ tab.label }}
           </div>
         </button>
+      </div>
+
+      <!-- Results of changes. The live region stays in the page so screen
+           readers announce what is put into it; errors interrupt. -->
+      <div aria-live="polite" class="empty:hidden mb-4">
+        <div
+          v-if="notice"
+          :role="notice.kind === 'error' ? 'alert' : undefined"
+          :class="[
+            'flex items-start justify-between gap-3',
+            notice.kind === 'success' ? 'notice-success' : 'notice-error',
+          ]"
+        >
+          <span>{{ notice.text }}</span>
+          <button type="button" class="shrink-0 underline" @click="notice = null">Dismiss</button>
+        </div>
       </div>
 
       <!-- Tab Content -->
@@ -482,21 +561,18 @@ function formatOptionalAcl(value: unknown): string {
                       </div>
                     </div>
 
-                    <p
-                      v-if="identity.store_error"
-                      class="mt-3 text-xs text-accent-red"
-                      role="alert"
-                    >
-                      The saved access list could not be read at startup, so saved keys cannot
-                      log in: {{ identity.store_error }}
+                    <p v-if="identity.store_error" class="mt-3 notice-error text-xs">
+                      {{ storeErrorText(identity) }}
                     </p>
                     <div
                       v-if="identity.acl_entries != null"
                       class="mt-3 text-xs text-content-secondary dark:text-content-muted"
                     >
                       Access list: {{ identity.acl_entries }}
-                      {{ identity.acl_entries === 1 ? 'entry' : 'entries' }},
-                      {{ identity.stored_entries ?? 0 }} saved
+                      {{ identity.acl_entries === 1 ? 'entry' : 'entries'
+                      }}<template v-if="identity.stored_entries != null"
+                        >, {{ identity.stored_entries }} saved</template
+                      >
                     </div>
 
                     <div class="mt-3 flex items-center gap-2">
@@ -543,14 +619,11 @@ function formatOptionalAcl(value: unknown): string {
           </div>
 
           <p
-            v-for="identity in aclIdentities.filter((i: { store_error?: string | null }) => i.store_error)"
+            v-for="identity in identitiesWithStoreError"
             :key="`store-error-${identity.name}`"
-            class="text-sm text-accent-red"
-            role="alert"
+            class="notice-error"
           >
-            {{ identity.name }}: the saved access list could not be read at startup
-            ({{ identity.store_error }}). Saved keys cannot log in until the repeater restarts
-            and reads it.
+            {{ storeErrorText(identity) }}
           </p>
 
           <div
@@ -584,11 +657,11 @@ function formatOptionalAcl(value: unknown): string {
                     Kept
                   </th>
                   <th
-                    class="text-left text-content-secondary dark:text-content-muted text-sm font-medium pb-3 pr-4"
+                    class="hidden sm:table-cell text-left text-content-secondary dark:text-content-muted text-sm font-medium pb-3 pr-4"
                   >
                     Last Activity
                   </th>
-                  <th class="pb-3"><span class="sr-only">Actions</span></th>
+                  <th class="pb-3 text-right"><span class="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -617,9 +690,9 @@ function formatOptionalAcl(value: unknown): string {
                     <select
                       class="cfg-select w-auto min-w-[8.5rem]"
                       :value="roleValue(client)"
-                      :disabled="busyKey === entryKey(client)"
-                      :aria-label="`Role for ${client.public_key}`"
-                      @change="changeRole(client, $event)"
+                      :disabled="isBusy(client)"
+                      :aria-label="`Role for ${client.public_key} on ${client.identity_name}`"
+                      @change="onRoleSelected(client, $event)"
                     >
                       <option v-if="roleValue(client) === 0" :value="0" disabled>Guest</option>
                       <option
@@ -632,31 +705,24 @@ function formatOptionalAcl(value: unknown): string {
                     </select>
                   </td>
                   <td class="py-3 pr-4">
-                    <span
-                      :class="[
-                        'px-2 py-1 text-xs font-medium rounded whitespace-nowrap',
-                        client.persisted
-                          ? 'bg-accent-green/opacity-medium text-accent-green'
-                          : 'bg-secondary/opacity-medium text-secondary',
-                      ]"
-                      :title="
-                        client.persisted
-                          ? 'Stored: survives a restart'
-                          : 'In memory only: cleared on restart'
-                      "
-                    >
+                    <span :class="client.persisted ? 'pill-green' : 'pill-neutral'">
                       {{ client.persisted ? 'Saved' : 'Until restart' }}
                     </span>
+                    <span class="sr-only">{{
+                      client.persisted ? ': survives a restart' : ': cleared on restart'
+                    }}</span>
                   </td>
-                  <td class="py-3 pr-4">
+                  <td class="hidden sm:table-cell py-3 pr-4">
                     <div class="text-sm text-content-secondary dark:text-content-muted whitespace-nowrap">
                       {{ formatActivity(client.last_activity) }}
                     </div>
                   </td>
                   <td class="py-3 text-right">
                     <button
+                      type="button"
                       class="btn-danger-xs"
-                      :disabled="busyKey === entryKey(client)"
+                      :disabled="isBusy(client)"
+                      :aria-label="`Remove ${client.public_key} from ${client.identity_name}`"
                       @click="pendingRemoval = client"
                     >
                       Remove
@@ -699,27 +765,18 @@ function formatOptionalAcl(value: unknown): string {
               :key="entryKey(client)"
               class="glass-card rounded-[10px] p-4 border border-stroke-subtle dark:border-white/opacity-light"
             >
-              <div class="flex items-start justify-between">
-                <div class="flex-1">
-                  <div class="flex items-center gap-3 mb-3">
-                    <span
-                      :class="[
-                        'px-2 py-1 text-xs font-medium rounded',
-                        aclRoleBadgeClass(client.permissions),
-                      ]"
-                    >
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex-1 min-w-0">
+                  <div class="flex flex-wrap items-center gap-2 mb-3">
+                    <span :class="aclRoleBadgeClass(client.permissions)">
                       {{ aclRoleLabel(client.permissions) }}
                     </span>
-                    <span
-                      v-if="client.persisted"
-                      class="px-2 py-1 text-xs font-medium rounded bg-accent-green/opacity-medium text-accent-green"
-                    >
-                      Saved
+                    <span :class="client.persisted ? 'pill-green' : 'pill-neutral'">
+                      {{ client.persisted ? 'Saved' : 'Until restart' }}
                     </span>
-                    <span
-                      class="text-content-primary font-mono text-sm"
-                      >{{ client.public_key }}</span
-                    >
+                    <span class="text-content-primary font-mono text-sm break-all">{{
+                      client.public_key
+                    }}</span>
                   </div>
 
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
@@ -755,8 +812,10 @@ function formatOptionalAcl(value: unknown): string {
                   </div>
                 </div>
                 <button
-                  class="ml-4 btn-danger-xs"
-                  :disabled="busyKey === entryKey(client)"
+                  type="button"
+                  class="btn-danger-xs shrink-0"
+                  :disabled="isBusy(client)"
+                  :aria-label="`Remove ${client.public_key} from ${client.identity_name}`"
                   @click="pendingRemoval = client"
                 >
                   Remove
@@ -771,6 +830,7 @@ function formatOptionalAcl(value: unknown): string {
     <AclEntryModal
       :show="showAddModal"
       :identities="aclIdentities"
+      :entries="aclClients"
       :initial-identity="selectedIdentity"
       @close="showAddModal = false"
       @saved="onEntrySaved"
@@ -787,6 +847,19 @@ function formatOptionalAcl(value: unknown): string {
       variant="danger"
       @close="pendingRemoval = null"
       @confirm="confirmRemoval"
+    />
+    <ConfirmDialog
+      :show="pendingRoleChange !== null"
+      title="Stop saving this admin?"
+      :message="
+        pendingRoleChange
+          ? `${pendingRoleChange.client.identity_name} is a room server, which keeps only admins after a restart, as MeshCore firmware does. As ${pendingRoleLabel} this entry lasts until the next restart.`
+          : ''
+      "
+      confirm-text="Change role"
+      variant="warning"
+      @close="cancelRoleChange"
+      @confirm="confirmRoleChange"
     />
 
     <!-- Refresh Button -->

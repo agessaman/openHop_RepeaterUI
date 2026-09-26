@@ -1189,22 +1189,26 @@ export class ApiService {
   }
 
   /**
-   * Remove a client from an identity's ACL, and its stored entry. Name the
-   * identity by `identity_name` where possible: two identities can share a
-   * hash. With neither, the backend removes the client from every ACL.
+   * Remove a client from one identity's ACL, and its stored entry. The backend
+   * prefers `identity_name`, which two identities cannot share as they can a
+   * hash; the hash is sent too as a fallback. One of them is required: with
+   * neither, the backend would remove the client from every ACL.
    */
   static async removeACLClient(data: {
     public_key: string;
     identity_name?: string;
     identity_hash?: string;
   }): Promise<AclRemoveClientResponse> {
+    if (!data.identity_name && !data.identity_hash) {
+      throw new Error('removeACLClient needs identity_name or identity_hash');
+    }
     try {
       const params = await this.getGeneratedRequestParams();
       const response = await generatedApiClient.aclRemoveClient.aclRemoveClientCreate(
         {
           client_pubkey: data.public_key,
           ...(data.identity_name ? { identity_name: data.identity_name } : {}),
-          ...(data.identity_hash && !data.identity_name ? { identity_hash: data.identity_hash } : {}),
+          ...(data.identity_hash ? { identity_hash: data.identity_hash } : {}),
         },
         params,
       );
