@@ -303,8 +303,7 @@ describe('Sessions access list', () => {
       .find((b) => b.textContent?.trim() === 'Remove' && b.className.includes('modal-btn-confirm'))!
       .click()
     await flushPromises()
-    expect(document.activeElement?.tagName).toBe('SELECT')
-    expect(document.activeElement?.textContent).toContain('All Identities')
+    expect(document.activeElement).toBe(wrapper.find('select').element)
     wrapper.unmount()
   })
 
@@ -318,6 +317,25 @@ describe('Sessions access list', () => {
     expect(document.activeElement).toBe(buttons[0])
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true }))
     expect(document.activeElement).toBe(buttons[buttons.length - 1])
+    // Focus that has left the dialog is brought back in either direction.
+    ;(document.body as HTMLElement).focus()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))
+    expect(document.activeElement).toBe(buttons[0])
+    wrapper.unmount()
+  })
+
+  it('keeps focus on the page when the refresh after a removal fails', async () => {
+    api.removeACLClient.mockResolvedValue({ success: true })
+    const wrapper = await mountWith([entry()])
+    await wrapper.find('button[aria-label^="Remove"]').trigger('click')
+    await flushPromises()
+
+    api.getACLClients.mockRejectedValue(new Error('offline'))
+    ;[...document.querySelectorAll('button')]
+      .find((b) => b.textContent?.trim() === 'Remove' && b.className.includes('modal-btn-confirm'))!
+      .click()
+    await flushPromises()
+    expect(document.activeElement?.textContent?.trim()).toBe('Access List')
     wrapper.unmount()
   })
 

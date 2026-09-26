@@ -102,6 +102,7 @@ useDialogFocus(
           <svg
             v-if="props.variant === 'danger'"
             class="w-6 h-6"
+            aria-hidden="true"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -117,6 +118,7 @@ useDialogFocus(
           <svg
             v-else-if="props.variant === 'warning'"
             class="w-6 h-6"
+            aria-hidden="true"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -129,7 +131,7 @@ useDialogFocus(
             />
           </svg>
           <!-- Info Icon -->
-          <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg v-else class="w-6 h-6" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               stroke-linecap="round"
               stroke-linejoin="round"

@@ -116,6 +116,8 @@ function showNotice(kind: 'success' | 'error', text: string) {
 const addEntryButton = ref<HTMLElement | null>(null);
 // The By Identity tab has no Add entry button; its filter is the anchor there.
 const identityFilter = ref<HTMLElement | null>(null);
+// Always rendered, unlike the two above, which an error state replaces.
+const tabList = ref<HTMLElement | null>(null);
 const refocusKey = ref<string | null>(null);
 
 function onFocusLost(element: HTMLElement | null) {
@@ -125,8 +127,12 @@ function onFocusLost(element: HTMLElement | null) {
 async function restoreFocus() {
   const key = refocusKey.value;
   refocusKey.value = null;
-  if (key === null) return;
   await nextTick();
+  // Nothing recorded, and focus is still somewhere: leave it. Focus can also
+  // fall to the body after the dialog closed, when the refresh unmounts the
+  // control it returned to (an error state replaces the tab content).
+  const onBody = !document.activeElement || document.activeElement === document.body;
+  if (key === null && !onBody) return;
   const target = Array.from(document.querySelectorAll<HTMLElement>('[data-focus-key]')).find(
     (element) => element.dataset.focusKey === key,
   );
@@ -134,9 +140,13 @@ async function restoreFocus() {
     element && element.isConnected && !element.matches(':disabled') ? element : null;
   // Without scrolling: the result notice already moved the view to where
   // the outcome is reported.
-  (usable(target) ?? usable(addEntryButton.value) ?? usable(identityFilter.value))?.focus({
-    preventScroll: true,
-  });
+  const activeTabButton = tabList.value?.querySelector<HTMLElement>('[data-active-tab="true"]');
+  (
+    usable(target) ??
+    usable(addEntryButton.value) ??
+    usable(identityFilter.value) ??
+    usable(activeTabButton)
+  )?.focus({ preventScroll: true });
 }
 
 onBeforeUnmount(() => clearTimeout(noticeTimer));
@@ -359,10 +369,11 @@ function formatOptionalAcl(value: unknown): string {
     <!-- Main Content -->
     <div class="glass-card rounded-[15px] p-6">
       <!-- Tab Navigation -->
-      <div class="flex flex-wrap border-b border-stroke-subtle dark:border-stroke/opacity-light mb-6">
+      <div ref="tabList" class="flex flex-wrap border-b border-stroke-subtle dark:border-stroke/opacity-light mb-6">
         <button
           v-for="tab in tabs"
           :key="tab.id"
+          :data-active-tab="activeTab === tab.id"
           @click="setActiveTab(tab.id)"
           :class="[
             'px-4 py-2 text-sm font-medium transition-colors duration-200 border-b-2 mr-6 mb-2',
