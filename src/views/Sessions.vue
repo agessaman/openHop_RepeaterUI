@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue';
 import ApiService from '@/utils/api';
 import type { ACLClient } from '@/generated/openapi';
 import Spinner from '@/components/ui/Spinner.vue';
@@ -7,6 +7,7 @@ import AclEntryModal from '@/components/modals/AclEntryModal.vue';
 import ConfirmDialog from '@/components/modals/ConfirmDialog.vue';
 import {
   ACL_ASSIGNABLE_ROLES,
+  ACL_ROLE_ADMIN,
   ACL_ROLE_MASK,
   aclRoleBadgeClass,
   aclRoleLabel,
@@ -98,11 +99,36 @@ async function whileBusy(client: AclEntry, work: () => Promise<void>) {
   }
 }
 
+const noticeRegion = ref<HTMLElement | null>(null);
+
 function showNotice(kind: 'success' | 'error', text: string) {
   clearTimeout(noticeTimer);
   notice.value = { kind, text };
   // Results fade on their own; errors stay until dismissed.
   if (kind === 'success') noticeTimer = setTimeout(() => (notice.value = null), 5000);
+  // A change made far down the list reports at the top of the card.
+  void nextTick(() => noticeRegion.value?.scrollIntoView?.({ block: 'nearest' }));
+}
+
+// Where focus goes after a confirmed change: the confirm dialog cannot
+// return it to the control that opened it, which the change disabled (or,
+// for a removal, deleted), so it is put back once the list has refreshed.
+const addEntryButton = ref<HTMLElement | null>(null);
+const refocusKey = ref<string | null>(null);
+
+function onFocusLost(element: HTMLElement | null) {
+  refocusKey.value = element?.dataset.focusKey ?? null;
+}
+
+async function restoreFocus() {
+  const key = refocusKey.value;
+  refocusKey.value = null;
+  if (key === null) return;
+  await nextTick();
+  const target = Array.from(document.querySelectorAll<HTMLElement>('[data-focus-key]')).find(
+    (element) => element.dataset.focusKey === key,
+  );
+  (target && !target.matches(':disabled') ? target : addEntryButton.value)?.focus();
 }
 
 onBeforeUnmount(() => clearTimeout(noticeTimer));
@@ -121,6 +147,7 @@ async function confirmRemoval() {
   const client = pendingRemoval.value;
   pendingRemoval.value = null;
   if (!client) return;
+  let removed = false;
   await whileBusy(client, async () => {
     try {
       const response = await ApiService.removeACLClient({
@@ -128,6 +155,7 @@ async function confirmRemoval() {
         identity_name: client.identity_name,
         identity_hash: client.identity_hash,
       });
+      removed = !!response.success;
       if (response.success) {
         showNotice('success', `Removed ${client.public_key} from ${client.identity_name}`);
       } else {
@@ -137,7 +165,8 @@ async function confirmRemoval() {
       showNotice('error', `Could not remove the entry: ${errorText(err)}`);
     }
   });
-  await fetchAllACLData();
+  if (removed) await fetchAllACLData();
+  await restoreFocus();
 }
 
 function roleValue(client: AclEntry): number {
@@ -154,7 +183,7 @@ const pendingRoleChange = ref<{
 function onRoleSelected(client: AclEntry, event: Event) {
   const select = event.target as HTMLSelectElement;
   const role = Number(select.value);
-  if (client.identity_type === 'room_server' && client.persisted && role !== 3) {
+  if (client.identity_type === 'room_server' && client.persisted && role !== ACL_ROLE_ADMIN) {
     pendingRoleChange.value = { client, role, select };
     return;
   }
@@ -206,9 +235,10 @@ async function applyRole(client: AclEntry, role: number, select: HTMLSelectEleme
     }
   });
   // The browser already shows the new choice; put the stored role back
-  // rather than rely on the refresh to overwrite it.
-  if (!applied) select.value = String(roleValue(client));
-  await fetchAllACLData();
+  // rather than rely on a refresh to overwrite it.
+  if (applied) await fetchAllACLData();
+  else select.value = String(roleValue(client));
+  await restoreFocus();
 }
 
 function formatTimestamp(timestamp: number | undefined): string {
@@ -376,7 +406,7 @@ function formatOptionalAcl(value: unknown): string {
 
       <!-- Results of changes. The live region stays in the page so screen
            readers announce what is put into it; errors interrupt. -->
-      <div aria-live="polite" class="empty:hidden mb-4">
+      <div ref="noticeRegion" aria-live="polite" class="empty:hidden mb-4 scroll-mt-4">
         <div
           v-if="notice"
           :role="notice.kind === 'error' ? 'alert' : undefined"
@@ -610,6 +640,8 @@ function formatOptionalAcl(value: unknown): string {
               room servers save admins only, as MeshCore firmware does.
             </p>
             <button
+              ref="addEntryButton"
+              type="button"
               class="btn-primary shrink-0"
               :disabled="aclIdentities.length === 0"
               @click="showAddModal = true"
@@ -690,6 +722,7 @@ function formatOptionalAcl(value: unknown): string {
                     <select
                       class="cfg-select w-auto min-w-[8.5rem]"
                       :value="roleValue(client)"
+                      :data-focus-key="`${entryKey(client)}:role`"
                       :disabled="isBusy(client)"
                       :aria-label="`Role for ${client.public_key} on ${client.identity_name}`"
                       @change="onRoleSelected(client, $event)"
@@ -721,6 +754,7 @@ function formatOptionalAcl(value: unknown): string {
                     <button
                       type="button"
                       class="btn-danger-xs"
+                      :data-focus-key="`${entryKey(client)}:remove`"
                       :disabled="isBusy(client)"
                       :aria-label="`Remove ${client.public_key} from ${client.identity_name}`"
                       @click="pendingRemoval = client"
@@ -774,6 +808,9 @@ function formatOptionalAcl(value: unknown): string {
                     <span :class="client.persisted ? 'pill-green' : 'pill-neutral'">
                       {{ client.persisted ? 'Saved' : 'Until restart' }}
                     </span>
+                    <span class="sr-only">{{
+                      client.persisted ? ': survives a restart' : ': cleared on restart'
+                    }}</span>
                     <span class="text-content-primary font-mono text-sm break-all">{{
                       client.public_key
                     }}</span>
@@ -814,6 +851,7 @@ function formatOptionalAcl(value: unknown): string {
                 <button
                   type="button"
                   class="btn-danger-xs shrink-0"
+                  :data-focus-key="`${entryKey(client)}:card-remove`"
                   :disabled="isBusy(client)"
                   :aria-label="`Remove ${client.public_key} from ${client.identity_name}`"
                   @click="pendingRemoval = client"
@@ -847,6 +885,7 @@ function formatOptionalAcl(value: unknown): string {
       variant="danger"
       @close="pendingRemoval = null"
       @confirm="confirmRemoval"
+      @focus-lost="onFocusLost"
     />
     <ConfirmDialog
       :show="pendingRoleChange !== null"
@@ -860,6 +899,7 @@ function formatOptionalAcl(value: unknown): string {
       variant="warning"
       @close="cancelRoleChange"
       @confirm="confirmRoleChange"
+      @focus-lost="onFocusLost"
     />
 
     <!-- Refresh Button -->

@@ -15,6 +15,13 @@ vi.mock('@/utils/api', () => ({ default: api }))
 const KEY = '87b98e21e7858c0b74da819fdd40507df5f4e6cd38c798d27f1ef888a4e4c922'
 const OTHER = 'aa'.repeat(32)
 
+describe('removeACLClient', () => {
+  it('refuses a call that names no identity, which would clear every ACL', async () => {
+    const { default: RealApi } = await vi.importActual<typeof import('@/utils/api')>('@/utils/api')
+    await expect(RealApi.removeACLClient({ public_key: KEY })).rejects.toThrow('identity_name')
+  })
+})
+
 describe('ACL role helpers', () => {
   it('accepts a pasted key with a 0x prefix, spaces and colons', () => {
     expect(normalizePublicKey(`  0x${KEY.slice(0, 8).toUpperCase()} ${KEY.slice(8)} `)).toBe(KEY)
@@ -73,13 +80,27 @@ describe('AclEntryModal', () => {
     })
   }
 
-  it('requires a role to be chosen: none is preselected', async () => {
+  it('requires a role to be chosen, and says so on submit', async () => {
     const wrapper = await open()
+    expect((wrapper.find('#acl-role').element as HTMLSelectElement).selectedIndex).toBe(0)
     await wrapper.find('#acl-pubkey').setValue(OTHER)
-    const submit = wrapper.find('button[type="submit"]')
-    expect(submit.attributes('disabled')).toBeDefined()
+    // Submit stays enabled so Enter always gets an answer.
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
     await wrapper.find('form').trigger('submit')
     expect(api.setACLPermissions).not.toHaveBeenCalled()
+    expect(wrapper.find('#acl-role-help').text()).toContain('Choose the role')
+    expect(wrapper.find('#acl-role').attributes('aria-invalid')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('reports a failed request', async () => {
+    api.setACLPermissions.mockRejectedValue(new Error('Network error - no response received'))
+    const wrapper = await open()
+    await wrapper.find('#acl-pubkey').setValue(OTHER)
+    await wrapper.find('#acl-role').setValue('3')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('[role="alert"]').text()).toContain('Network error')
     wrapper.unmount()
   })
 
@@ -244,6 +265,27 @@ describe('Sessions access list', () => {
     cancel.click()
     await flushPromises()
     expect((select.element as HTMLSelectElement).value).toBe('3')
+    wrapper.unmount()
+  })
+
+  it('puts focus somewhere useful after a confirmed removal', async () => {
+    api.removeACLClient.mockResolvedValue({ success: true })
+    const wrapper = await mountWith([entry()])
+    const remove = wrapper.find('button[aria-label^="Remove"]')
+    ;(remove.element as HTMLElement).focus()
+    await remove.trigger('click')
+    await flushPromises()
+    // The least destructive choice has focus in the confirmation.
+    expect(document.activeElement?.textContent?.trim()).toBe('Cancel')
+
+    api.getACLClients.mockResolvedValue({ success: true, data: { clients: [] } })
+    const confirm = [...document.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === 'Remove' && b.className.includes('modal-btn-confirm'),
+    )!
+    confirm.click()
+    await flushPromises()
+    // The row is gone, so focus goes to Add entry rather than the page body.
+    expect(document.activeElement?.textContent?.trim()).toBe('Add entry')
     wrapper.unmount()
   })
 

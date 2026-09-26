@@ -73,7 +73,8 @@
   /* Badges */
 
   --color-badge-cyan-bg: #dbeafe;
-  --color-badge-cyan-text: #2563eb;
+  /* #2563eb was 4.24:1 on the fill; this is 5.74:1. */
+  --color-badge-cyan-text: #1d4ed8;
 
   --color-badge-neutral-bg: #f1f5f9;
   --color-badge-neutral-text: #334155;

@@ -3,10 +3,11 @@
  * the permissions byte. The upper bits are kept when a role changes.
  */
 export const ACL_ROLE_MASK = 0x03;
+export const ACL_ROLE_ADMIN = 0x03;
 
 /** Roles an entry can be given. Guest (0) removes an entry, so it is not offered. */
 export const ACL_ASSIGNABLE_ROLES: { value: number; label: string }[] = [
-  { value: 3, label: 'Admin' },
+  { value: ACL_ROLE_ADMIN, label: 'Admin' },
   { value: 2, label: 'Read-write' },
   { value: 1, label: 'Read-only' },
 ];

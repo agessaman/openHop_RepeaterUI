@@ -9,13 +9,16 @@ const FOCUSABLE =
  * focused before it opened.
  *
  * `initialFocus` names the element to focus first; otherwise the first
- * focusable element in `container` is used.
+ * focusable element in `container` is used. When the element to return to
+ * is gone or disabled by then (the action disabled its row, say),
+ * `onFocusLost` is called instead, so focus is not dropped on the body.
  */
 export function useDialogFocus(
   open: Ref<boolean>,
   container: Ref<HTMLElement | null>,
   onEscape: () => void,
   initialFocus?: Ref<HTMLElement | null>,
+  onFocusLost?: (lost: HTMLElement | null) => void,
 ) {
   let returnTo: HTMLElement | null = null;
 
@@ -36,10 +39,11 @@ export function useDialogFocus(
     const first = items[0]!;
     const last = items[items.length - 1]!;
     const active = document.activeElement;
-    if (event.shiftKey && (active === first || !container.value?.contains(active))) {
+    const outside = !container.value?.contains(active);
+    if (event.shiftKey && (active === first || outside)) {
       event.preventDefault();
       last.focus();
-    } else if (!event.shiftKey && active === last) {
+    } else if (!event.shiftKey && (active === last || outside)) {
       event.preventDefault();
       first.focus();
     }
@@ -55,8 +59,12 @@ export function useDialogFocus(
         (initialFocus?.value ?? focusables()[0])?.focus();
       } else {
         document.removeEventListener('keydown', onKeydown);
-        returnTo?.focus();
+        const target = returnTo;
         returnTo = null;
+        // Let the re-render the closing action caused settle first.
+        await nextTick();
+        if (target?.isConnected && !target.matches(':disabled')) target.focus();
+        else onFocusLost?.(target);
       }
     },
     { immediate: true },

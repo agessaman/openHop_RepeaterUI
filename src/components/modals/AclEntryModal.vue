@@ -6,6 +6,7 @@ import Spinner from '@/components/ui/Spinner.vue';
 import { useDialogFocus } from '@/composables/useDialogFocus';
 import {
   ACL_ASSIGNABLE_ROLES,
+  ACL_ROLE_ADMIN,
   ACL_ROLE_MASK,
   aclRoleLabel,
   normalizePublicKey,
@@ -65,8 +66,12 @@ const existing = computed(() =>
       entry.identity_name === identityName.value && entry.public_key_full === publicKey.value,
   ),
 );
-const canSave = computed(
-  () => !!identityName.value && !!publicKey.value && role.value !== null && !saving.value,
+const roleError = computed(() =>
+  touched.value && role.value === null ? 'Choose the role this key logs in as.' : null,
+);
+const needsRoomWarning = computed(
+  () =>
+    isRoomServer.value && role.value !== null && (role.value & ACL_ROLE_MASK) !== ACL_ROLE_ADMIN,
 );
 
 watch(
@@ -92,8 +97,10 @@ function identityLabel(identity: AclIdentity): string {
 }
 
 async function save() {
+  // Submit is never disabled for bad input, so Enter always gets an answer:
+  // marking the form touched shows what is missing.
   touched.value = true;
-  if (!canSave.value || !publicKey.value || role.value === null) return;
+  if (saving.value || !identityName.value || !publicKey.value || role.value === null) return;
   saving.value = true;
   error.value = null;
   try {
@@ -169,14 +176,28 @@ async function save() {
             >
               {{ keyError || "The client's full public key, as shown in its app." }}
             </p>
-            <p v-if="existing" class="text-xs mt-1 text-content-secondary dark:text-content-muted">
-              Already listed as {{ aclRoleLabel(existing.permissions) }}; saving changes its role.
+            <p
+              aria-live="polite"
+              class="text-xs mt-1 text-content-secondary dark:text-content-muted"
+            >
+              <template v-if="existing">
+                Already listed as {{ aclRoleLabel(existing.permissions) }}; saving changes its role.
+              </template>
             </p>
           </div>
 
           <div>
             <label for="acl-role" class="modal-field-label">Role</label>
-            <select id="acl-role" v-model="role" class="modal-select" required>
+            <select
+              id="acl-role"
+              v-model="role"
+              class="modal-select"
+              required
+              :aria-invalid="roleError !== null"
+              :aria-describedby="
+                needsRoomWarning ? 'acl-role-help acl-room-warning' : 'acl-role-help'
+              "
+            >
               <option :value="null" disabled>Choose a role…</option>
               <option
                 v-for="option in ACL_ASSIGNABLE_ROLES"
@@ -187,9 +208,12 @@ async function save() {
               </option>
             </select>
             <p
-              v-if="isRoomServer && role !== null && (role & ACL_ROLE_MASK) !== 3"
-              class="notice-warning text-xs mt-2"
+              id="acl-role-help"
+              :class="['text-xs mt-1', roleError ? 'text-badge-red-text' : 'text-content-muted']"
             >
+              {{ roleError || 'Required. The key logs in with a blank password as this role.' }}
+            </p>
+            <p v-if="needsRoomWarning" id="acl-room-warning" class="notice-warning text-xs mt-2">
               Room servers keep only admins after a restart, as MeshCore firmware does. This entry
               lasts until the next restart.
             </p>
@@ -198,18 +222,13 @@ async function save() {
           <div v-if="error" class="notice-error" role="alert">{{ error }}</div>
 
           <div class="modal-actions">
-            <button
-              type="button"
-              class="modal-btn-cancel disabled:opacity-50 disabled:cursor-not-allowed"
-              :disabled="saving"
-              @click="close"
-            >
+            <button type="button" class="modal-btn-cancel" :disabled="saving" @click="close">
               Cancel
             </button>
             <button
               type="submit"
-              class="modal-btn-primary flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              :disabled="!canSave"
+              class="modal-btn-primary flex items-center justify-center gap-2"
+              :disabled="saving"
             >
               <Spinner v-if="saving" size="sm" color="current" />
               {{ saving ? 'Saving…' : existing ? 'Change role' : 'Add entry' }}

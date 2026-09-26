@@ -14,6 +14,8 @@ interface Props {
 interface Emits {
   (e: 'close'): void;
   (e: 'confirm'): void;
+  /** Focus could not return to the element that opened the dialog. */
+  (e: 'focus-lost', element: HTMLElement | null): void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -25,11 +27,11 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<Emits>();
 
+// The severity icon must meet 3:1 as a graphic; same-hue tints did not.
 const variantColors = {
-  danger: 'bg-accent-red/opacity-light dark:bg-accent-red/opacity-medium border-accent-red/opacity-medium text-accent-red',
-  warning:
-    'bg-accent-amber/opacity-light dark:bg-accent-amber/opacity-medium border-accent-amber/opacity-medium text-accent-amber',
-  info: 'bg-primary/opacity-medium border-primary/opacity-medium text-primary',
+  danger: 'bg-badge-red-bg text-badge-red-text',
+  warning: 'bg-badge-amber-bg text-badge-amber-text',
+  info: 'bg-badge-cyan-bg text-badge-cyan-text',
 };
 
 // White text on the light tint was unreadable in light mode; these keep AA
@@ -41,9 +43,17 @@ const buttonClasses = {
 };
 
 const dialog = ref<HTMLElement | null>(null);
+// The least destructive choice has focus when the dialog opens.
+const cancelButton = ref<HTMLElement | null>(null);
 const titleId = useId();
 const messageId = useId();
-useDialogFocus(toRef(props, 'show'), dialog, () => emit('close'));
+useDialogFocus(
+  toRef(props, 'show'),
+  dialog,
+  () => emit('close'),
+  cancelButton,
+  (lost) => emit('focus-lost', lost),
+);
 </script>
 
 <template>
@@ -135,7 +145,7 @@ useDialogFocus(toRef(props, 'show'), dialog, () => emit('close'));
 
       <!-- Actions -->
       <div class="modal-actions">
-        <button type="button" class="modal-btn-cancel" @click="emit('close')">
+        <button ref="cancelButton" type="button" class="modal-btn-cancel" @click="emit('close')">
           {{ props.cancelText }}
         </button>
         <button type="button" :class="buttonClasses[props.variant]" @click="emit('confirm')">

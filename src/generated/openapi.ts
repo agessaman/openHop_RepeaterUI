@@ -3716,9 +3716,10 @@ export class Api<
                */
               authenticated_clients?: number;
               /**
-               * Set when the stored ACL could not be read at
-               * startup: stored entries cannot log in, and the
-               * entries listed are not the stored ones.
+               * Set while the stored ACL cannot be read (at
+               * startup, and until a later login or change
+               * reads it): stored entries cannot log in, and
+               * the entries listed are not the stored ones.
                */
               store_error?: string | null;
               /**
@@ -3786,8 +3787,7 @@ export class Api<
             count?: number;
             /**
              * Identity name to error, for identities whose stored ACL
-             * could not be read at startup; their list is not the
-             * stored one.
+             * cannot be read now; their list is not the stored one.
              */
             store_errors?: Record<string, string>;
             /** Filter applied (if any) */
@@ -3920,8 +3920,20 @@ export class Api<
         {
           success?: boolean;
           data?: {
-            total_entries?: number;
-            by_identity?: object;
+            /** Identities with an access list (the repeater and room servers) */
+            total_identities?: number;
+            /** ACL entries across them, sessions and provisioned alike */
+            total_clients?: number;
+            admin_clients?: number;
+            /** Entries that are not admins (any other role) */
+            guest_clients?: number;
+            by_identity_type?: Record<
+              string,
+              {
+                count?: number;
+                clients?: number;
+              }
+            >;
           };
         },
         any
