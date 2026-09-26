@@ -29,10 +29,14 @@ const variantColors = {
   info: 'bg-primary/opacity-medium border-primary/opacity-medium text-primary',
 };
 
+// Tinted fill with the variant's own text colour, as .modal-btn-danger: white
+// text on the light tint was unreadable in light mode.
 const buttonColors = {
-  danger: 'bg-accent-red/opacity-light hover:bg-accent-red/opacity-light',
-  warning: 'bg-accent-amber/opacity-light hover:bg-accent-amber/opacity-light',
-  info: 'bg-primary/opacity-light hover:bg-primary/opacity-light',
+  danger:
+    'bg-accent-red/opacity-medium hover:bg-accent-red/opacity-medium border border-accent-red/opacity-heavy text-accent-red',
+  warning:
+    'bg-accent-amber/opacity-medium hover:bg-accent-amber/opacity-medium border border-accent-amber/opacity-heavy text-accent-amber',
+  info: 'bg-primary/opacity-medium hover:bg-primary/opacity-medium border border-primary/opacity-heavy text-primary',
 };
 </script>
 
@@ -127,7 +131,7 @@ const buttonColors = {
         <button
           @click="emit('confirm')"
           :class="[
-            'flex-1 px-4 py-3 rounded-xl text-white transition-all duration-200',
+            'flex-1 px-4 py-3 rounded-xl font-medium transition-all duration-200',
             buttonColors[props.variant],
           ]"
         >
