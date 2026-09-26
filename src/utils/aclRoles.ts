@@ -3,6 +3,8 @@
  * the permissions byte. The upper bits are kept when a role changes.
  */
 export const ACL_ROLE_MASK = 0x03;
+// Admin is the role with both bits set, so it equals the mask. They are
+// different things: one is a value, the other selects the role bits.
 export const ACL_ROLE_ADMIN = 0x03;
 
 /** Roles an entry can be given. Guest (0) removes an entry, so it is not offered. */

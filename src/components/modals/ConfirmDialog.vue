@@ -29,9 +29,9 @@ const emit = defineEmits<Emits>();
 
 // The severity icon must meet 3:1 as a graphic; same-hue tints did not.
 const variantColors = {
-  danger: 'bg-badge-red-bg text-badge-red-text',
-  warning: 'bg-badge-amber-bg text-badge-amber-text',
-  info: 'bg-badge-cyan-bg text-badge-cyan-text',
+  danger: 'border border-accent-red/opacity-medium bg-badge-red-bg text-badge-red-text',
+  warning: 'border border-accent-amber/opacity-medium bg-badge-amber-bg text-badge-amber-text',
+  info: 'border border-primary/opacity-medium bg-badge-cyan-bg text-badge-cyan-text',
 };
 
 // White text on the light tint was unreadable in light mode; these keep AA

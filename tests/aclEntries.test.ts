@@ -289,6 +289,38 @@ describe('Sessions access list', () => {
     wrapper.unmount()
   })
 
+  it('puts focus on the identity filter after a removal on the By Identity tab', async () => {
+    api.removeACLClient.mockResolvedValue({ success: true })
+    const wrapper = await mountWith([entry()])
+    await wrapper.findAll('button').find((b) => b.text() === 'By Identity')!.trigger('click')
+    const remove = wrapper.find('button[aria-label^="Remove"]')
+    ;(remove.element as HTMLElement).focus()
+    await remove.trigger('click')
+    await flushPromises()
+
+    api.getACLClients.mockResolvedValue({ success: true, data: { clients: [] } })
+    ;[...document.querySelectorAll('button')]
+      .find((b) => b.textContent?.trim() === 'Remove' && b.className.includes('modal-btn-confirm'))!
+      .click()
+    await flushPromises()
+    expect(document.activeElement?.tagName).toBe('SELECT')
+    expect(document.activeElement?.textContent).toContain('All Identities')
+    wrapper.unmount()
+  })
+
+  it('keeps Tab inside an open dialog', async () => {
+    const wrapper = await mountWith([entry()])
+    await wrapper.find('button[aria-label^="Remove"]').trigger('click')
+    await flushPromises()
+    const buttons = [...document.querySelectorAll<HTMLElement>('[role="alertdialog"] button')]
+    buttons[buttons.length - 1]!.focus()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))
+    expect(document.activeElement).toBe(buttons[0])
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true }))
+    expect(document.activeElement).toBe(buttons[buttons.length - 1])
+    wrapper.unmount()
+  })
+
   it('removes by identity name after confirmation', async () => {
     api.removeACLClient.mockResolvedValue({ success: true })
     const wrapper = await mountWith([entry()])

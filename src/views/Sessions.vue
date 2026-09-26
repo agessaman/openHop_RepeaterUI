@@ -114,6 +114,8 @@ function showNotice(kind: 'success' | 'error', text: string) {
 // return it to the control that opened it, which the change disabled (or,
 // for a removal, deleted), so it is put back once the list has refreshed.
 const addEntryButton = ref<HTMLElement | null>(null);
+// The By Identity tab has no Add entry button; its filter is the anchor there.
+const identityFilter = ref<HTMLElement | null>(null);
 const refocusKey = ref<string | null>(null);
 
 function onFocusLost(element: HTMLElement | null) {
@@ -128,7 +130,13 @@ async function restoreFocus() {
   const target = Array.from(document.querySelectorAll<HTMLElement>('[data-focus-key]')).find(
     (element) => element.dataset.focusKey === key,
   );
-  (target && !target.matches(':disabled') ? target : addEntryButton.value)?.focus();
+  const usable = (element: HTMLElement | null | undefined) =>
+    element && element.isConnected && !element.matches(':disabled') ? element : null;
+  // Without scrolling: the result notice already moved the view to where
+  // the outcome is reported.
+  (usable(target) ?? usable(addEntryButton.value) ?? usable(identityFilter.value))?.focus({
+    preventScroll: true,
+  });
 }
 
 onBeforeUnmount(() => clearTimeout(noticeTimer));
@@ -187,7 +195,7 @@ function onRoleSelected(client: AclEntry, event: Event) {
     pendingRoleChange.value = { client, role, select };
     return;
   }
-  void applyRole(client, role, select);
+  void applyRole(client, role, select, false);
 }
 
 const pendingRoleLabel = computed(
@@ -212,10 +220,15 @@ function cancelRoleChange() {
 function confirmRoleChange() {
   const pending = pendingRoleChange.value;
   pendingRoleChange.value = null;
-  if (pending) void applyRole(pending.client, pending.role, pending.select);
+  if (pending) void applyRole(pending.client, pending.role, pending.select, true);
 }
 
-async function applyRole(client: AclEntry, role: number, select: HTMLSelectElement) {
+async function applyRole(
+  client: AclEntry,
+  role: number,
+  select: HTMLSelectElement,
+  afterDialog: boolean,
+) {
   let applied = false;
   await whileBusy(client, async () => {
     try {
@@ -238,7 +251,9 @@ async function applyRole(client: AclEntry, role: number, select: HTMLSelectEleme
   // rather than rely on a refresh to overwrite it.
   if (applied) await fetchAllACLData();
   else select.value = String(roleValue(client));
-  await restoreFocus();
+  // Only a change confirmed in a dialog lost focus; a direct change must not
+  // take the focus another confirmation is waiting to restore.
+  if (afterDialog) await restoreFocus();
 }
 
 function formatTimestamp(timestamp: number | undefined): string {
@@ -406,12 +421,12 @@ function formatOptionalAcl(value: unknown): string {
 
       <!-- Results of changes. The live region stays in the page so screen
            readers announce what is put into it; errors interrupt. -->
-      <div ref="noticeRegion" aria-live="polite" class="empty:hidden mb-4 scroll-mt-4">
+      <div ref="noticeRegion" aria-live="polite" class="scroll-mt-4">
         <div
           v-if="notice"
           :role="notice.kind === 'error' ? 'alert' : undefined"
           :class="[
-            'flex items-start justify-between gap-3',
+            'mb-4 flex items-start justify-between gap-3',
             notice.kind === 'success' ? 'notice-success' : 'notice-error',
           ]"
         >
@@ -776,6 +791,7 @@ function formatOptionalAcl(value: unknown): string {
               >Filter by Identity</label
             >
             <select
+              ref="identityFilter"
               v-model="selectedIdentity"
               class="bg-background-mute dark:bg-white/opacity-subtle border border-stroke-subtle dark:border-stroke/opacity-light rounded-lg px-4 py-2 text-content-primary focus:outline-none focus:border-primary/opacity-heavy transition-colors"
             >

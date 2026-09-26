@@ -192,7 +192,7 @@ async function save() {
               id="acl-role"
               v-model="role"
               class="modal-select"
-              required
+              aria-required="true"
               :aria-invalid="roleError !== null"
               :aria-describedby="
                 needsRoomWarning ? 'acl-role-help acl-room-warning' : 'acl-role-help'

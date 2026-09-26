@@ -338,9 +338,9 @@ html.is-mobile-app {
   .notice-warning { @apply rounded-lg p-3 text-ui-label border border-accent-amber/opacity-heavy bg-badge-amber-bg text-badge-amber-text; }
 
   /* Confirm buttons for ConfirmDialog — pair with .modal-btn-cancel in .modal-actions */
-  .modal-btn-confirm-danger  { @apply flex-1 px-4 py-3 rounded-lg transition-all font-medium border border-accent-red/opacity-heavy bg-badge-red-bg text-badge-red-text hover:brightness-95; }
-  .modal-btn-confirm-warning { @apply flex-1 px-4 py-3 rounded-lg transition-all font-medium border border-accent-amber/opacity-heavy bg-badge-amber-bg text-badge-amber-text hover:brightness-95; }
-  .modal-btn-confirm-info    { @apply flex-1 px-4 py-3 rounded-lg transition-all font-medium border border-primary/opacity-heavy bg-badge-cyan-bg text-badge-cyan-text hover:brightness-95; }
+  .modal-btn-confirm-danger  { @apply flex-1 px-4 py-3 rounded-lg transition-[color,background-color,border-color,filter] font-medium border border-accent-red/opacity-heavy bg-badge-red-bg text-badge-red-text hover:brightness-95; }
+  .modal-btn-confirm-warning { @apply flex-1 px-4 py-3 rounded-lg transition-[color,background-color,border-color,filter] font-medium border border-accent-amber/opacity-heavy bg-badge-amber-bg text-badge-amber-text hover:brightness-95; }
+  .modal-btn-confirm-info    { @apply flex-1 px-4 py-3 rounded-lg transition-[color,background-color,border-color,filter] font-medium border border-primary/opacity-heavy bg-badge-cyan-bg text-badge-cyan-text hover:brightness-95; }
 
   /* ── Status indicator dots ──────────────────────────────────────────────── */
   /* Inline status dots — use alongside w-1.5 h-1.5 rounded-full */
