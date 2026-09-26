@@ -344,7 +344,8 @@ function formatOptionalAcl(value: unknown): string {
     </div>
 
     <!-- Stats Cards -->
-    <div v-if="aclStats" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <!-- Hidden while the list shows an error: the counts would be stale. -->
+    <div v-if="aclStats && !error" class="grid grid-cols-1 md:grid-cols-4 gap-4">
       <div class="glass-card rounded-[15px] p-4">
         <div class="text-content-secondary dark:text-content-muted text-sm mb-1">
           Total Identities

@@ -345,6 +345,8 @@ describe('Sessions access list', () => {
     const wrapper = mount(Sessions, { global: { stubs: { Spinner: true } }, attachTo: document.body })
     await flushPromises()
     expect(wrapper.text()).toContain('database is locked')
+    // No counts from a read that failed, or from an earlier one.
+    expect(wrapper.text()).not.toContain('Access List Entries')
     wrapper.unmount()
   })
 
