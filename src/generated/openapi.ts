@@ -1210,6 +1210,8 @@ export class Api<
           version?: string;
           /** @example "0.5.0" */
           core_version?: string;
+          /** Configured USB/TCP radio labels whose live modem link is down; empty when connected or not configured. */
+          modem_disconnected?: string[];
         },
         any
       >({
@@ -1701,6 +1703,159 @@ export class Api<
         body: data,
         secure: true,
         type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  sensorsTypes = {
+    /**
+     * @description Discover installed sensor modules and return registered types with their settings schemas. Compatibility aliases such as pymc_modem remain loadable from existing definitions but are omitted from add-new choices.
+     *
+     * @tags Sensors
+     * @name SensorsTypesList
+     * @summary List available sensor types
+     * @request GET:/sensors_types
+     */
+    sensorsTypesList: (params: RequestParams = {}) =>
+      this.request<
+        {
+          success?: boolean;
+          data?: {
+            types?: {
+              type?: string;
+              name?: string;
+              description?: string;
+              settings?: {
+                key?: string;
+                type?: "string" | "integer" | "number";
+                label?: string;
+                default?: object;
+                help?: string;
+              }[];
+            }[];
+          };
+        },
+        any
+      >({
+        path: `/sensors_types`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+  };
+  sensorsConfig = {
+    /**
+     * @description Returns current sensor definitions. Nonempty settings.password values are masked as *****; stored credentials are never included in this response. Each definition also includes _original_name so the client can preserve its password safely when renaming it while adding another sensor of the same type.
+     *
+     * @tags Sensors
+     * @name SensorsConfigList
+     * @summary Get current sensor configuration
+     * @request GET:/sensors_config
+     */
+    sensorsConfigList: (params: RequestParams = {}) =>
+      this.request<
+        {
+          success?: boolean;
+          data?: {
+            enabled?: boolean;
+            poll_interval_seconds?: number;
+            auto_install_packages?: boolean;
+            definitions?: {
+              name?: string;
+              /** The stored name used for masked-password round trips; not persisted on update. */
+              _original_name?: string;
+              type?: string;
+              enabled?: boolean;
+              auto_install_packages?: boolean;
+              settings?: object;
+            }[];
+          };
+        },
+        any
+      >({
+        path: `/sensors_config`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+  };
+  sensorsConfigUpdate = {
+    /**
+     * @description Update sensor definitions and persist to config.yaml under the provisioning lock. Names must be unique; sensor types may repeat, including existing pymc_modem aliases. Password value ***** preserves an existing secret; an empty string clears it. Pass the _original_name from GET when renaming an existing sensor to preserve its password, even if another sensor of the same type is added. Omit it for new definitions. Always returns restart_required=true.
+     *
+     * @tags Sensors
+     * @name SensorsConfigUpdateCreate
+     * @summary Update sensor configuration
+     * @request POST:/sensors_config_update
+     * @secure
+     */
+    sensorsConfigUpdateCreate: (
+      data: {
+        enabled?: boolean;
+        /** @default 30 */
+        poll_interval_seconds?: number;
+        /** @default false */
+        auto_install_packages?: boolean;
+        definitions?: {
+          name: string;
+          /** Optional origin from GET for an existing definition; not persisted. */
+          _original_name?: string;
+          type: string;
+          enabled?: boolean;
+          auto_install_packages?: boolean;
+          settings?: object;
+        }[];
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        {
+          success?: boolean;
+          data?: {
+            saved?: boolean;
+            restart_required?: boolean;
+            message?: string;
+          };
+        },
+        any
+      >({
+        path: `/sensors_config_update`,
+        method: "POST",
+        body: data,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  sensorsRead = {
+    /**
+     * @description Triggers an immediate read of all configured sensors and returns results.
+     *
+     * @tags Sensors
+     * @name SensorsReadCreate
+     * @summary Trigger one-shot sensor read
+     * @request POST:/sensors_read
+     */
+    sensorsReadCreate: (params: RequestParams = {}) =>
+      this.request<
+        {
+          success?: boolean;
+          data?: {
+            readings?: object[];
+            summary?: {
+              enabled?: boolean;
+              poll_interval_seconds?: number;
+              configured?: number;
+              loaded?: number;
+              running?: boolean;
+            };
+          };
+        },
+        any
+      >({
+        path: `/sensors_read`,
+        method: "POST",
         format: "json",
         ...params,
       }),
