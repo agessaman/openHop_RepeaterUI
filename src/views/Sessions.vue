@@ -54,15 +54,17 @@ async function fetchAllACLData() {
       ApiService.getACLStats(),
     ]);
     if (generation !== fetchGeneration) return;
-    if (infoResponse.success) {
-      aclInfo.value = infoResponse.data;
+    // The backend answers a failure with success: false, not an HTTP error.
+    // Showing the error, not the last list, keeps a failed read from passing
+    // for an empty list or for the result of the change just made.
+    const failed = [infoResponse, clientsResponse, statsResponse].find((r) => !r.success);
+    if (failed) {
+      error.value = failed.error || 'Failed to load ACL data';
+      return;
     }
-    if (clientsResponse.success && clientsResponse.data) {
-      aclClients.value = clientsResponse.data.clients || [];
-    }
-    if (statsResponse.success) {
-      aclStats.value = statsResponse.data;
-    }
+    aclInfo.value = infoResponse.data;
+    aclClients.value = clientsResponse.data?.clients || [];
+    aclStats.value = statsResponse.data;
   } catch (err) {
     if (generation !== fetchGeneration) return;
     error.value = err instanceof Error ? err.message : 'Failed to load ACL data';
@@ -124,9 +126,15 @@ function onFocusLost(element: HTMLElement | null) {
   refocusKey.value = element?.dataset.focusKey ?? null;
 }
 
-async function restoreFocus() {
-  const key = refocusKey.value;
-  refocusKey.value = null;
+/**
+ * Put focus back after a change and its refresh. After a confirm dialog
+ * (``fromDialog``) it returns to the control the dialog recorded. Otherwise
+ * it acts only when focus fell to the body (a failed refresh unmounted the
+ * control), and leaves any key a confirmed change is still waiting on.
+ */
+async function restoreFocus(fromDialog = true) {
+  const key = fromDialog ? refocusKey.value : null;
+  if (fromDialog) refocusKey.value = null;
   await nextTick();
   // Nothing recorded, and focus is still somewhere: leave it. Focus can also
   // fall to the body after the dialog closed, when the refresh unmounts the
@@ -159,6 +167,7 @@ async function onEntrySaved(message: string) {
   showAddModal.value = false;
   showNotice('success', message);
   await fetchAllACLData();
+  await restoreFocus(false);
 }
 
 async function confirmRemoval() {
@@ -263,7 +272,7 @@ async function applyRole(
   else select.value = String(roleValue(client));
   // Only a change confirmed in a dialog lost focus; a direct change must not
   // take the focus another confirmation is waiting to restore.
-  if (afterDialog) await restoreFocus();
+  await restoreFocus(afterDialog);
 }
 
 function formatTimestamp(timestamp: number | undefined): string {

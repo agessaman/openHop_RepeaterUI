@@ -339,6 +339,27 @@ describe('Sessions access list', () => {
     wrapper.unmount()
   })
 
+  it('shows an error rather than a stale list when a read answers success: false', async () => {
+    api.getACLClients.mockResolvedValue({ success: false, error: 'database is locked' })
+    const { default: Sessions } = await import('@/views/Sessions.vue')
+    const wrapper = mount(Sessions, { global: { stubs: { Spinner: true } }, attachTo: document.body })
+    await flushPromises()
+    expect(wrapper.text()).toContain('database is locked')
+    wrapper.unmount()
+  })
+
+  it('keeps focus on the page when the refresh after a direct role change fails', async () => {
+    api.setACLPermissions.mockResolvedValue({ success: true })
+    const wrapper = await mountWith([entry()])
+    const select = wrapper.find('tbody select')
+    ;(select.element as HTMLElement).focus()
+    api.getACLClients.mockRejectedValue(new Error('offline'))
+    await select.setValue('2')
+    await flushPromises()
+    expect(document.activeElement?.textContent?.trim()).toBe('Access List')
+    wrapper.unmount()
+  })
+
   it('removes by identity name after confirmation', async () => {
     api.removeACLClient.mockResolvedValue({ success: true })
     const wrapper = await mountWith([entry()])
