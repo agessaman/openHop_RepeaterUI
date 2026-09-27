@@ -692,6 +692,17 @@ export interface ACLClient {
    */
   identity_hash?: string;
   /**
+   * The client's advertised name, from an advert the repeater heard or
+   * else a companion's contact for it; null when neither knows it.
+   * @example "Howl"
+   */
+  client_name?: string | null;
+  /**
+   * Contact type from the client's advert (e.g. "Chat Node"), when heard
+   * @example "Chat Node"
+   */
+  client_type?: string | null;
+  /**
    * Full public key of the identity, unique where the hash is not
    * @pattern ^[0-9a-fA-F]{64}$
    */

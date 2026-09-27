@@ -83,6 +83,11 @@ const busyKeys = ref(new Set<string>());
 const notice = ref<{ kind: 'success' | 'error'; text: string } | null>(null);
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
+/** The client's advertised name with its short key, or the key alone. */
+function entryLabel(client: AclEntry): string {
+  return client.client_name ? `${client.client_name} (${client.public_key})` : client.public_key;
+}
+
 function entryKey(client: AclEntry): string {
   return `${client.identity_name}:${client.public_key_full}`;
 }
@@ -184,7 +189,7 @@ async function confirmRemoval() {
       });
       removed = !!response.success;
       if (response.success) {
-        showNotice('success', `Removed ${client.public_key} from ${client.identity_name}`);
+        showNotice('success', `Removed ${entryLabel(client)} from ${client.identity_name}`);
       } else {
         showNotice('error', `Could not remove the entry: ${response.error}`);
       }
@@ -739,11 +744,17 @@ function formatOptionalAcl(value: unknown): string {
                   class="border-b border-stroke-subtle dark:border-white/opacity-light hover:bg-background-mute/opacity-heavy dark:hover:bg-white/opacity-light transition-colors"
                 >
                   <td class="py-3 pr-4">
-                    <div class="font-mono text-sm text-content-primary" :title="client.public_key_full">
-                      {{ client.public_key }}
+                    <div v-if="client.client_name" class="text-sm text-content-primary">
+                      {{ client.client_name }}
                     </div>
-                    <div class="font-mono text-xs text-content-muted">
-                      Address {{ client.address }}
+                    <div
+                      :class="[
+                        'font-mono',
+                        client.client_name ? 'text-xs text-content-muted' : 'text-sm text-content-primary',
+                      ]"
+                      :title="client.public_key_full"
+                    >
+                      {{ client.public_key }}
                     </div>
                   </td>
                   <td class="py-3 pr-4">
@@ -760,7 +771,7 @@ function formatOptionalAcl(value: unknown): string {
                       :value="roleValue(client)"
                       :data-focus-key="`${entryKey(client)}:role`"
                       :disabled="isBusy(client)"
-                      :aria-label="`Role for ${client.public_key} on ${client.identity_name}`"
+                      :aria-label="`Role for ${entryLabel(client)} on ${client.identity_name}`"
                       @change="onRoleSelected(client, $event)"
                     >
                       <option v-if="roleValue(client) === 0" :value="0" disabled>Guest</option>
@@ -792,7 +803,7 @@ function formatOptionalAcl(value: unknown): string {
                       class="btn-danger-xs"
                       :data-focus-key="`${entryKey(client)}:remove`"
                       :disabled="isBusy(client)"
-                      :aria-label="`Remove ${client.public_key} from ${client.identity_name}`"
+                      :aria-label="`Remove ${entryLabel(client)} from ${client.identity_name}`"
                       @click="pendingRemoval = client"
                     >
                       Remove
@@ -848,18 +859,33 @@ function formatOptionalAcl(value: unknown): string {
                     <span class="sr-only">{{
                       client.persisted ? ': survives a restart' : ': cleared on restart'
                     }}</span>
-                    <span class="text-content-primary font-mono text-sm break-all">{{
-                      client.public_key
-                    }}</span>
+                  </div>
+                  <div class="mb-3 min-w-0">
+                    <div
+                      v-if="client.client_name"
+                      class="text-content-primary font-medium break-words"
+                    >
+                      {{ client.client_name }}
+                    </div>
+                    <div
+                      :class="[
+                        'font-mono break-all',
+                        client.client_name
+                          ? 'text-xs text-content-muted'
+                          : 'text-sm text-content-primary',
+                      ]"
+                      :title="client.public_key_full"
+                    >
+                      {{ client.public_key }}
+                    </div>
                   </div>
 
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <span class="text-content-secondary dark:text-content-muted">Address:</span>
-                      <span
-                        class="text-content-primary/opacity-heavy font-mono ml-2"
-                        >{{ client.address }}</span
-                      >
+                    <div v-if="client.client_type">
+                      <span class="text-content-secondary dark:text-content-muted">Type:</span>
+                      <span class="text-content-primary/opacity-heavy ml-2">{{
+                        client.client_type
+                      }}</span>
                     </div>
                     <div>
                       <span class="text-content-secondary dark:text-content-muted">Identity:</span>
@@ -890,7 +916,7 @@ function formatOptionalAcl(value: unknown): string {
                   class="btn-danger-xs shrink-0"
                   :data-focus-key="`${entryKey(client)}:card-remove`"
                   :disabled="isBusy(client)"
-                  :aria-label="`Remove ${client.public_key} from ${client.identity_name}`"
+                  :aria-label="`Remove ${entryLabel(client)} from ${client.identity_name}`"
                   @click="pendingRemoval = client"
                 >
                   Remove
@@ -915,7 +941,7 @@ function formatOptionalAcl(value: unknown): string {
       title="Remove access entry"
       :message="
         pendingRemoval
-          ? `Remove ${pendingRemoval.public_key} from ${pendingRemoval.identity_name}? It will need a password to log in again.`
+          ? `Remove ${entryLabel(pendingRemoval)} from ${pendingRemoval.identity_name}? It will need a password to log in again.`
           : ''
       "
       confirm-text="Remove"

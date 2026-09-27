@@ -362,6 +362,16 @@ describe('Sessions access list', () => {
     wrapper.unmount()
   })
 
+  it("shows a client's advertised name above its key", async () => {
+    const wrapper = await mountWith([entry({ client_name: 'Howl 👾', client_type: 'Chat Node' })])
+    const cell = wrapper.find('tbody td')
+    expect(cell.text()).toContain('Howl 👾')
+    expect(cell.text()).toContain(KEY.slice(0, 16))
+    expect(cell.text()).not.toContain('Address')
+    expect(wrapper.find('button[aria-label^="Remove"]').attributes('aria-label')).toContain('Howl 👾')
+    wrapper.unmount()
+  })
+
   it('removes by identity name after confirmation', async () => {
     api.removeACLClient.mockResolvedValue({ success: true })
     const wrapper = await mountWith([entry()])
