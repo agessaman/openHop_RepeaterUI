@@ -66,6 +66,9 @@ const existing = computed(() =>
       entry.identity_name === identityName.value && entry.public_key_full === publicKey.value,
   ),
 );
+const identityError = computed(() =>
+  touched.value && !identityName.value ? 'Choose the identity this key gets access to.' : null,
+);
 const roleError = computed(() =>
   touched.value && role.value === null ? 'Choose the role this key logs in as.' : null,
 );
@@ -78,10 +81,14 @@ watch(
   () => props.show,
   (open) => {
     if (!open) return;
+    // Never pick an identity on the operator's behalf when there is a choice:
+    // the key gets access to whichever is selected.
     identityName.value =
       props.initialIdentity && props.identities.some((i) => i.name === props.initialIdentity)
         ? props.initialIdentity
-        : (props.identities[0]?.name ?? '');
+        : props.identities.length === 1
+          ? props.identities[0]!.name
+          : '';
     publicKeyText.value = '';
     role.value = null;
     error.value = null;
@@ -148,11 +155,26 @@ async function save() {
         <form class="modal-form" @submit.prevent="save">
           <div>
             <label for="acl-identity" class="modal-field-label">Identity</label>
-            <select id="acl-identity" v-model="identityName" class="modal-select">
+            <select
+              id="acl-identity"
+              v-model="identityName"
+              class="modal-select"
+              aria-required="true"
+              :aria-invalid="identityError !== null"
+              :aria-describedby="identityError ? 'acl-identity-error' : undefined"
+            >
+              <option value="" disabled>Choose an identity…</option>
               <option v-for="identity in identities" :key="identity.name" :value="identity.name">
                 {{ identityLabel(identity) }}
               </option>
             </select>
+            <p
+              v-if="identityError"
+              id="acl-identity-error"
+              class="text-xs mt-1 text-badge-red-text"
+            >
+              {{ identityError }}
+            </p>
           </div>
 
           <div>

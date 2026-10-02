@@ -73,12 +73,33 @@ describe('AclEntryModal', () => {
           { name: 'General', type: 'room_server' },
         ],
         entries: [],
+        initialIdentity: 'repeater',
         ...props,
       },
       global: { stubs: { Teleport: true, Spinner: true } },
       attachTo: document.body,
     })
   }
+
+  it('makes the operator choose an identity rather than picking one', async () => {
+    const wrapper = await open({ initialIdentity: 'gone' })
+    expect((wrapper.find('#acl-identity').element as HTMLSelectElement).value).toBe('')
+    await wrapper.find('#acl-pubkey').setValue(OTHER)
+    await wrapper.find('#acl-role').setValue('3')
+    await wrapper.find('form').trigger('submit')
+    expect(api.setACLPermissions).not.toHaveBeenCalled()
+    expect(wrapper.find('#acl-identity-error').text()).toContain('Choose the identity')
+    wrapper.unmount()
+  })
+
+  it('selects the only identity there is', async () => {
+    const wrapper = await open({
+      initialIdentity: null,
+      identities: [{ name: 'repeater', type: 'repeater' }],
+    })
+    expect((wrapper.find('#acl-identity').element as HTMLSelectElement).value).toBe('repeater')
+    wrapper.unmount()
+  })
 
   it('requires a role to be chosen, and says so on submit', async () => {
     const wrapper = await open()
@@ -265,6 +286,89 @@ describe('Sessions access list', () => {
     cancel.click()
     await flushPromises()
     expect((select.element as HTMLSelectElement).value).toBe('3')
+    wrapper.unmount()
+  })
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((r) => (resolve = r))
+    return { promise, resolve }
+  }
+
+  function confirmButton(label: string) {
+    return [...document.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === label && b.className.includes('modal-btn-confirm'),
+    )!
+  }
+
+  it('still manages the list when only the summary counts fail', async () => {
+    api.getACLStats.mockResolvedValue({ success: false, error: 'stats broke' })
+    const wrapper = await mountWith([entry()])
+    expect(wrapper.find('tbody select').exists()).toBe(true)
+    expect(document.body.textContent).not.toContain('stats broke')
+    wrapper.unmount()
+  })
+
+  it('does not start a second change on a row that is still saving', async () => {
+    const pending = deferred<unknown>()
+    api.setACLPermissions.mockReturnValue(pending.promise)
+    const wrapper = await mountWith([entry()])
+    const select = wrapper.find('tbody select')
+
+    await select.setValue('2')
+    ;(select.element as HTMLSelectElement).value = '1'
+    select.element.dispatchEvent(new Event('change'))
+    await flushPromises()
+
+    expect(api.setACLPermissions).toHaveBeenCalledTimes(1)
+    pending.resolve({ success: true })
+    await flushPromises()
+    wrapper.unmount()
+  })
+
+  it('keeps a removed row disabled until the list has reloaded', async () => {
+    api.removeACLClient.mockResolvedValue({ success: true })
+    const wrapper = await mountWith([entry()])
+    const refresh = deferred<unknown>()
+    api.getACLClients.mockReturnValue(refresh.promise)
+
+    await wrapper.find('button[aria-label^="Remove"]').trigger('click')
+    await flushPromises()
+    confirmButton('Remove').click()
+    await flushPromises()
+
+    // A role change here would recreate the entry just removed.
+    expect((wrapper.find('tbody select').element as HTMLSelectElement).disabled).toBe(true)
+    refresh.resolve({ success: true, data: { clients: [] } })
+    await flushPromises()
+    wrapper.unmount()
+  })
+
+  it('leaves focus in a dialog opened while an earlier removal refreshed', async () => {
+    api.removeACLClient.mockResolvedValue({ success: true })
+    const second = entry({
+      public_key_full: OTHER,
+      public_key: `${OTHER.slice(0, 16)}...${OTHER.slice(-8)}`,
+    })
+    const wrapper = await mountWith([entry(), second])
+    const refresh = deferred<unknown>()
+    api.getACLClients.mockReturnValue(refresh.promise)
+
+    const removes = wrapper.findAll('button[aria-label^="Remove"]')
+    ;(removes[0]!.element as HTMLElement).focus()
+    await removes[0]!.trigger('click')
+    await flushPromises()
+    confirmButton('Remove').click()
+    await flushPromises()
+    ;(removes[1]!.element as HTMLElement).focus()
+    await removes[1]!.trigger('click')
+    await flushPromises()
+    expect(document.activeElement?.textContent?.trim()).toBe('Cancel')
+
+    refresh.resolve({ success: true, data: { clients: [second] } })
+    await flushPromises()
+    // Still in the second confirmation, not on a background control.
+    expect(document.activeElement?.textContent?.trim()).toBe('Cancel')
     wrapper.unmount()
   })
 

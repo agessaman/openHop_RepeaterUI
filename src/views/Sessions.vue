@@ -51,20 +51,21 @@ async function fetchAllACLData() {
     const [infoResponse, clientsResponse, statsResponse] = await Promise.all([
       ApiService.getACLInfo(),
       ApiService.getACLClients(),
-      ApiService.getACLStats(),
+      ApiService.getACLStats().catch(() => null),
     ]);
     if (generation !== fetchGeneration) return;
     // The backend answers a failure with success: false, not an HTTP error.
     // Showing the error, not the last list, keeps a failed read from passing
-    // for an empty list or for the result of the change just made.
-    const failed = [infoResponse, clientsResponse, statsResponse].find((r) => !r.success);
+    // for an empty list or for the result of the change just made. The stats
+    // are only summary counts, so they never block managing the list.
+    const failed = [infoResponse, clientsResponse].find((r) => !r.success);
     if (failed) {
       error.value = failed.error || 'Failed to load ACL data';
       return;
     }
     aclInfo.value = infoResponse.data;
     aclClients.value = clientsResponse.data?.clients || [];
-    aclStats.value = statsResponse.data;
+    aclStats.value = statsResponse?.success ? statsResponse.data : null;
   } catch (err) {
     if (generation !== fetchGeneration) return;
     error.value = err instanceof Error ? err.message : 'Failed to load ACL data';
@@ -98,6 +99,9 @@ function isBusy(client: AclEntry): boolean {
 
 async function whileBusy(client: AclEntry, work: () => Promise<void>) {
   const key = entryKey(client);
+  // One change per entry at a time; a second must not run, nor release the
+  // first one's hold when it finishes.
+  if (busyKeys.value.has(key)) return;
   busyKeys.value.add(key);
   try {
     await work();
@@ -141,6 +145,11 @@ async function restoreFocus(fromDialog = true) {
   const key = fromDialog ? refocusKey.value : null;
   if (fromDialog) refocusKey.value = null;
   await nextTick();
+  // Another dialog opened while this change ran: it owns focus, and puts it
+  // back itself when it closes.
+  if (showAddModal.value || pendingRemoval.value !== null || pendingRoleChange.value !== null) {
+    return;
+  }
   // Nothing recorded, and focus is still somewhere: leave it. Focus can also
   // fall to the body after the dialog closed, when the refresh unmounts the
   // control it returned to (an error state replaces the tab content).
@@ -196,8 +205,11 @@ async function confirmRemoval() {
     } catch (err) {
       showNotice('error', `Could not remove the entry: ${errorText(err)}`);
     }
+    // Refreshed while the row is still busy: until the list reloads, a
+    // removed row's controls must stay disabled, or a role change would
+    // recreate the entry just removed.
+    if (removed) await fetchAllACLData();
   });
-  if (removed) await fetchAllACLData();
   await restoreFocus();
 }
 
@@ -214,6 +226,10 @@ const pendingRoleChange = ref<{
 
 function onRoleSelected(client: AclEntry, event: Event) {
   const select = event.target as HTMLSelectElement;
+  if (isBusy(client)) {
+    select.value = String(roleValue(client));
+    return;
+  }
   const role = Number(select.value);
   if (client.identity_type === 'room_server' && client.persisted && role !== ACL_ROLE_ADMIN) {
     pendingRoleChange.value = { client, role, select };
@@ -270,11 +286,11 @@ async function applyRole(
     } catch (err) {
       showNotice('error', `Could not change the role: ${errorText(err)}`);
     }
+    if (applied) await fetchAllACLData();
   });
   // The browser already shows the new choice; put the stored role back
   // rather than rely on a refresh to overwrite it.
-  if (applied) await fetchAllACLData();
-  else select.value = String(roleValue(client));
+  if (!applied) select.value = String(roleValue(client));
   // Only a change confirmed in a dialog lost focus; a direct change must not
   // take the focus another confirmation is waiting to restore.
   await restoreFocus(afterDialog);
@@ -498,7 +514,7 @@ function formatOptionalAcl(value: unknown): string {
           <div v-else class="space-y-4">
             <div
               v-for="identity in identityList"
-              :key="identity.hash"
+              :key="identity.name"
               class="glass-card rounded-[10px] p-4 border border-stroke-subtle dark:border-white/opacity-light hover:border-primary/opacity-medium dark:hover:border-primary/opacity-medium transition-colors"
             >
               <div class="flex items-start justify-between">
